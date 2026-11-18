@@ -1,0 +1,35 @@
+services:
+  test:
+    build: .
+    init: true
+    env_file: .env
+    environment:
+      BASE_URL: ${BASE_URL:-http://host.docker.internal:8080}
+      CI: "true"
+    volumes:
+      - ./reports:/work/reports
+    ipc: host
+
+  scheduler:
+    build: .
+    profiles: [scheduled]
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BASE_URL: ${BASE_URL:-http://host.docker.internal:8080}
+      CI: "true"
+    volumes:
+      - ./reports:/work/reports
+    ipc: host
+    command: ["sh", "-c", "while true; do npm run test:report; sleep ${RUN_INTERVAL_SECONDS:-3600}; done"]
+
+  report:
+    build: .
+    init: true
+    command: ["node", "scripts/report-server.mjs", "--host", "0.0.0.0", "--port", "9323"]
+    ports:
+      - "127.0.0.1:3000:9323"
+    volumes:
+      - ./reports:/work/reports
+    restart: unless-stopped

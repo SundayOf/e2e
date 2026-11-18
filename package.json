@@ -1,0 +1,19 @@
+{
+  "name": "scada-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test --grep @base --headed --workers=1",
+    "test:tree": "node scripts/test-tree.mjs",
+    "report": "node scripts/report-server.mjs",
+    "test:reports": "node --test scripts/report-history.test.mjs scripts/report-settings.test.mjs scripts/report-server.test.mjs",
+    "report:pin": "node scripts/report-history.mjs pin",
+    "report:unpin": "node scripts/report-history.mjs unpin",
+    "report:prune": "node scripts/report-history.mjs prune",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.5.2",
+    "typescript": "5.9.3"
+  }
+}
