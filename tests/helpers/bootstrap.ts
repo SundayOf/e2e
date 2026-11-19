@@ -91,10 +91,6 @@ export async function prepareBootstrap(page: Page, info: TestInfo) {
   await cleanupBootstrap(page, info);
   const state: State = { owner: 'bootstrap-v1', origin: new URL(data.baseURL).origin, knownIds: [], ids: { project: '', user: '', group: '' }, ready: false };
   saveState(info, state);
-  expect(data.admin.login.toLowerCase(), 'Администратор и тестовый пользователь должны различаться').not.toBe(data.login);
-  await page.goto('/');
-  if (await page.locator('#logout').isVisible()) await signOut(page);
-  await signInAsTest(page);
   for (const kind of ['project', 'user', 'group'] as const) {
     await list(page, kind);
     const rows = page.locator('#table_option tr[rec_id]');
@@ -161,40 +157,44 @@ export async function prepareBootstrap(page: Page, info: TestInfo) {
 }
 
 export async function cleanupBootstrap(page: Page, info: TestInfo) {
-  const state = readBootstrap(info);
-  if (!state || !Object.values(state.ids).some(Boolean)) return;
-  state.ready = false;
+  expect(data.admin.login.toLowerCase(), 'Администратор и тестовый пользователь должны различаться').not.toBe(data.login);
+  const state: State = { owner: 'bootstrap-v1', origin: new URL(data.baseURL).origin, knownIds: [], ids: { project: '', user: '', group: '' }, ready: false };
   saveState(info, state);
   await closeForms(page);
   await page.goto('/');
   if (await page.locator('#logout').isVisible()) await signOut(page);
   await signInAsTest(page);
   for (const kind of ['user', 'group', 'project'] as const) {
-    const id = state.ids[kind];
-    if (!id) continue;
     await list(page, kind);
-    const row = page.locator(`#table_option tr[rec_id="${id}"]`);
-    if (await row.count()) {
-      if (kind === 'user') await expect(row).toHaveAttribute('fl', data.login);
-      else await expect(row.getByRole('cell', { name: lists[kind].name, exact: true })).toBeVisible();
-      if (kind === 'project') await page.goto('/');
-      // Служебная очистка не зависит от перезагрузки страницы при удалении открытого проекта.
-      const response = await page.request.post(lists[kind].remove, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        data: JSON.stringify({ ids: [id] }),
-      });
-      expect(response.ok()).toBe(true);
-      const result = await response.json();
-      expect(result.error, `Удаление: ${lists[kind].title}`).toBeFalsy();
-      expect(result.ids).toEqual([id]);
-      await expect.poll(async () => {
-        const fresh = await page.request.get(lists[kind].path, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-        expect(fresh.ok()).toBe(true);
-        return (await fresh.text()).includes(`rec_id="${id}"`);
-      }, { message: `Удалённый объект исчез из списка: ${lists[kind].title}` }).toBe(false);
+    const rows = page.locator('#table_option tr[rec_id]');
+    const reserved = kind === 'user'
+      ? page.locator(`#table_option tr[rec_id][fl="${data.login}"]`)
+      : rows.filter({ has: page.getByRole('cell', { name: lists[kind].name, exact: true }) });
+    const ids = await reserved.evaluateAll(nodes => nodes.map(node => node.getAttribute('rec_id')!));
+    for (const id of ids) {
+      expect(id).toMatch(/^(?:[a-f\d]{32}|\d+)$/i);
+      const row = page.locator(`#table_option tr[rec_id="${id}"]`);
+      if (await row.count()) {
+        if (kind === 'user') await expect(row).toHaveAttribute('fl', data.login);
+        else await expect(row.getByRole('cell', { name: lists[kind].name, exact: true })).toBeVisible();
+        if (kind === 'project') await page.goto('/');
+        const response = await page.request.post(lists[kind].remove, {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          data: JSON.stringify({ ids: [id] }),
+        });
+        expect(response.ok()).toBe(true);
+        const result = await response.json();
+        expect(result.error, `Удаление: ${lists[kind].title}`).toBeFalsy();
+        expect(result.ids.map(String)).toEqual([id]);
+        await expect.poll(async () => {
+          const fresh = await page.request.get(lists[kind].path, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          expect(fresh.ok()).toBe(true);
+          return (await fresh.text()).includes(`rec_id="${id}"`);
+        }, { message: `Удалённый объект исчез из списка: ${lists[kind].title}` }).toBe(false);
+      }
+      await list(page, kind);
+      await expect(row).toHaveCount(0);
     }
-    await list(page, kind);
-    await expect(row).toHaveCount(0);
     state.ids[kind] = '';
     saveState(info, state);
   }
