@@ -22,7 +22,7 @@ async function completeHtml(dir) {
 const marker = 'scada-playwright-html-v1';
 const now = Date.UTC(2026, 10, 14);
 
-test('Полностью пропущенный запуск не помечается пройденным', () => {
+test('Fully skipped runs are not marked as passed', () => {
   const reporter = new HistoryReporter({});
   reporter.total = 1;
   reporter.onTestEnd({}, { status: 'skipped', attachments: [] });
@@ -35,7 +35,7 @@ test('Полностью пропущенный запуск не помечае
   assert.equal(reporter.status, 'failed');
 });
 
-test('Названия запусков отражают раздел или тип набора', () => {
+test('Run names reflect the section or suite', () => {
   const table = title => ({ title, tags: ['@tags', '@tagtable', '@base'] });
   assert.equal(runName([table('Первый'), table('Второй')], 'selection'), 'Таблицы тегов');
   assert.equal(runName([table('Один кейс')], 'selection'), 'Один кейс');
@@ -59,7 +59,7 @@ function run(root, number, extra = {}, age = 0) {
   return dir;
 }
 
-test('Очистка ограничивает количество, сохраняя последний, закреплённый и пять base', t => {
+test('Retention keeps the latest, pinned and five full base runs', t => {
   const root = fixture(t);
   const dirs = Array.from({ length: 28 }, (_, i) => run(root, i, { kind: i < 6 ? 'base' : 'selection' }, (28 - i) * 1000));
   writeFileSync(join(dirs[6], '.keep'), 'bug');
@@ -71,7 +71,7 @@ test('Очистка ограничивает количество, сохран
   assert.ok(existsSync(unknown));
 });
 
-test('Возраст и бюджет удаляют старые незащищённые результаты', t => {
+test('Age and size limits remove old unprotected results', t => {
   const root = fixture(t);
   const day = 86400000;
   const expired = run(root, 1, {}, 8 * day);
@@ -86,7 +86,7 @@ test('Возраст и бюджет удаляют старые незащищ�
   assert.ok(result.overBudget);
 });
 
-test('Каталог-ссылка не удаляется и не обходится', t => {
+test('Linked directories are not traversed or deleted', t => {
   const root = fixture(t);
   const outside = mkdtempSync(join(tmpdir(), 'scada-outside-'));
   t.after(() => rmSync(outside, { recursive: true, force: true }));
@@ -99,7 +99,7 @@ test('Каталог-ссылка не удаляется и не обходит
   assert.equal(readFileSync(join(outside, 'important'), 'utf8'), 'keep');
 });
 
-test('Проверенные вложения не дублируются, прочие файлы сохраняются', async t => {
+test('Verified attachments are deduplicated and extra files are kept', async t => {
   const root = fixture(t);
   const dir = run(root, 1);
   const output = join(dir, 'results');
@@ -118,7 +118,7 @@ test('Проверенные вложения не дублируются, пр�
   assert.equal(existsSync(join(dir, 'html', 'extra', 'trace.zip')), false);
 });
 
-test('Отсутствующее/повреждённое вложение блокирует удаление результатов', async t => {
+test('Missing or corrupt attachments prevent result deletion', async t => {
   const root = fixture(t);
   const dir = run(root, 1);
   const output = join(dir, 'results');
@@ -139,7 +139,7 @@ test('Отсутствующее/повреждённое вложение бл�
   assert.ok(existsSync(source));
 });
 
-test('Активная блокировка запрещает второй запуск, восстановление сохраняет interrupted', async t => {
+test('An active lock prevents concurrent runs and recovery preserves interrupted status', async t => {
   const root = fixture(t);
   const release = await acquireLock(root);
   await assert.rejects(acquireLock(root), /active|актив/i);
@@ -150,7 +150,7 @@ test('Активная блокировка запрещает второй за
   assert.ok(existsSync(join(dir, 'payload')));
 });
 
-test('После принудительного завершения снимается только блокировка умершего процесса', async t => {
+test('Only a dead process lock is removed after forced termination', async t => {
   const root = fixture(t);
   const dir = join(root, 'runs', '20261114T000000000Z-00000001');
   const module = new URL('./report-history.mjs', import.meta.url).href;
@@ -174,7 +174,7 @@ test('После принудительного завершения снима�
   await assert.rejects(acquireLock(root), /unknown\/foreign/);
 });
 
-test('Закрепление доступно только собственному известному прогону', t => {
+test('Only known managed runs can be pinned', t => {
   const root = fixture(t);
   const dir = run(root, 1);
   setPinned(root, 'latest', true);
@@ -184,7 +184,7 @@ test('Закрепление доступно только собственно�
   assert.throws(() => setPinned(root, '../outside', true), /Unknown report/);
 });
 
-test('Полная база определяется точным набором тестов, независимо от npm/npx', () => {
+test('Full base detection matches the exact test set regardless of npm or npx', () => {
   const cli = createRequire(import.meta.url).resolve('@playwright/test/cli');
   const discovery = spawnSync(process.execPath, [cli, 'test', '--grep', '@base', '--list', '--reporter=json'], { encoding: 'utf8' });
   assert.equal(discovery.status, 0, discovery.stderr);

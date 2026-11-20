@@ -1,8 +1,9 @@
 import type { Page } from '@playwright/test';
+import { testIdentity } from './helpers/bootstrap-data';
 import { expect, test } from './helpers/test';
 import {
   deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag,
-  openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, signInAsTest, signOut,
+  openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, signInAsAdmin, signOut,
 } from './helpers/scada';
 import { openViewList } from './helpers/view';
 import { allowTagGroupWrite, expectTagAcl, openTestUsers as openUsers, setTestGroup as setGroup, testUserRow as userRow } from './helpers/access';
@@ -59,11 +60,11 @@ async function writeAndReadTag(page: Page, deviceName: string, tagName: string, 
 }
 
 test.beforeEach(async ({ page }) => {
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   await openUsers(page);
 });
 
-test('Сохранение членства в группе', { tag: ['@access', '@rights', '@base'] }, async ({ page, onCleanup }, info) => {
+test('Сохранение членства в группе', { tag: ['@access', '@rights', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   const initiallyEnabled = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
   onCleanup(async () => {
     if (info.status !== info.expectedStatus) await page.screenshot({ path: info.outputPath('Rights before cleanup.png'), timeout: 3000 }).catch(() => {});
@@ -78,7 +79,7 @@ test('Сохранение членства в группе', { tag: ['@access',
   await expect(userRow(page).locator('td.group')).toHaveText(initiallyEnabled ? '' : '1');
 });
 
-test('Сохранение выбранных прав', { tag: ['@access', '@rights', '@base'] }, async ({ page, onCleanup }, info) => {
+test('Сохранение выбранных прав', { tag: ['@access', '@rights', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   const initiallyEnabled = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
   onCleanup(async () => {
     if (info.status !== info.expectedStatus) await page.screenshot({ path: info.outputPath('Rights before cleanup.png'), timeout: 3000 }).catch(() => {});
@@ -98,7 +99,7 @@ test('Сохранение выбранных прав', { tag: ['@access', '@ri
   expect(reloaded).toEqual(immediate);
 });
 
-test('Запись тега по праву группы', { tag: ['@access', '@rights', '@g03', '@base'] }, async ({ page, onCleanup }, info) => {
+test('Запись тега по праву группы', { tag: ['@access', '@rights', '@g03', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   test.setTimeout(60_000);
   const deviceName = 'GroupAccessDevice';
   const tagName = 'GroupValue';
@@ -112,7 +113,7 @@ test('Запись тега по праву группы', { tag: ['@access', '@
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     if (await page.locator('#form_edit_accept_on_groups').isVisible()) await page.locator('#form_edit_accept_on_groups #form_cancel').click();
     await openProject(page, projectName);
     await removeOwnDevice(page, deviceName, deviceId);
@@ -139,7 +140,7 @@ test('Запись тега по праву группы', { tag: ['@access', '@
 
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'test';
   await openProject(page, projectName);
   await openDeviceTree(page);
@@ -148,7 +149,7 @@ test('Запись тега по праву группы', { tag: ['@access', '@
   await expect(adminCell).toHaveText('2');
 });
 
-test('Запрет записи тега без права', { tag: ['@access', '@rights', '@s02', '@base'] }, async ({ page, onCleanup }, info) => {
+test('Запрет записи тега без права', { tag: ['@access', '@rights', '@s02', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   test.setTimeout(60_000);
   const deviceName = 'RestrictedAccessDevice';
   const tagName = 'RestrictedValue';
@@ -162,7 +163,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     if (await page.locator('#form_edit_accept_on_users').isVisible()) await page.locator('#form_edit_accept_on_users #form_cancel').click();
     if (await page.locator('#form_edit_accept_on_groups').isVisible()) await page.locator('#form_edit_accept_on_groups #form_cancel').click();
     await openProject(page, projectName);
@@ -215,7 +216,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
 
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'test';
   await openProject(page, projectName);
   await openDeviceTree(page);
@@ -223,7 +224,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
   await expect(page.locator('#table_option tr').filter({ hasText: tagName }).locator('td[id^="v"]')).toHaveText('1');
 });
 
-test('Доступ к картам по праву группы', { tag: ['@access', '@rights', '@map', '@g09', '@base'] }, async ({ page, onCleanup }, info) => {
+test('Доступ к картам по праву группы', { tag: ['@access', '@rights', '@map', '@g09', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   test.setTimeout(90_000);
   const initialGroup = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
   let role: 'test' | 'autotest' | 'none' = 'test';
@@ -234,7 +235,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     if (await page.locator('#form_edit_user').isVisible()) await page.locator('#form_edit_user #form_cancel').click();
     if (await page.locator('#form_edit_group_users').isVisible()) await page.locator('#form_edit_group_users #form_cancel').click();
     await openUsers(page);
@@ -247,7 +248,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
   await expect(userForm.locator('#enable_edit_maps')).not.toBeChecked();
   await userForm.locator('#form_cancel').click();
   await page.locator('#panel_right [title="Группы"]').click();
-  await page.locator('#table_option tr[fn="test_group"] td.edit').click();
+  await page.locator(`#table_option tr[rec_id="${await testIdentity(page, 'group')}"] td.edit`).click();
   const groupForm = page.locator('#form_edit_group_users');
   await expect(groupForm.locator('#enable_edit_maps')).toBeChecked();
   await groupForm.locator('#form_cancel').click();
@@ -264,7 +265,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
 
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'test';
   await openUsers(page);
   await setGroup(page, false);
@@ -281,7 +282,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
 
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'test';
   await openUsers(page);
   await setGroup(page, true);

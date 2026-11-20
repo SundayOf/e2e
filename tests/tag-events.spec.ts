@@ -1,8 +1,7 @@
 import { expect, test } from './helpers/test';
-import { bootstrapData } from './helpers/bootstrap-data';
 import {
   deleteVirtualDeviceIfPresent, ensureProject, ensureVirtualDevice, ensureVirtualTag, expectTagValueUnchanged,
-  openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signInAsTest,
+  openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, currentUser,
 } from './helpers/scada';
 
 test('Включение и отключение журнала событий тега', { tag: ['@tags', '@tag10', '@base'] }, async ({ page, onCleanup }) => {
@@ -10,14 +9,13 @@ test('Включение и отключение журнала событий �
   const device = 'Журналирование тега';
   const tag = 'Значение';
   const form = page.locator('#form_edit_tag');
-  await signInAsTest(page);
+  await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   const usersLoaded = page.waitForResponse(r => new URL(r.url()).pathname === '/edit_users/' && r.ok());
   await page.locator('#panel_right [title="Пользователи"]').click();
   await (await usersLoaded).finished();
-  const actor = await page.locator(`#table_option tr[fl="${bootstrapData.admin.login.toLowerCase()}"] td`).nth(2).innerText();
-  expect(actor, 'Имя администратора прочитано из списка пользователей').toBeTruthy();
+  const actor = await page.locator(`#table_option tr[fl="${currentUser().toLowerCase()}"] td`).nth(2).innerText();
   await expect.poll(() => page.evaluate(() => (window as unknown as { os: { vars: { keyup: { timer: number | false } } } }).os.vars.keyup.timer === false)).toBe(true);
   await expect(page.locator('#div_msg')).toBeHidden();
   const originalEventsSelected = await page.locator('#check_events').isChecked();

@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from './helpers/test';
-import { bootstrapIdentity } from './helpers/bootstrap-data';
-import { ensureProject, openProject, projectName, signInAsTest, signIn, signOut } from './helpers/scada';
+import { testIdentity } from './helpers/bootstrap-data';
+import { ensureProject, openProject, projectName, signInAsAdmin, signIn, signOut } from './helpers/scada';
 import { cleanupFileFolder, createFileItem, expandFileFolder, fileNode, openFileEditor, openFileManager, renameFileItem, saveFileText, selectFile } from './helpers/files';
 
-test.beforeEach(async ({ page, onCleanup }) => {
-  await signInAsTest(page);
+test.beforeEach(async ({ page, onCleanup }, info) => {
+  await (info.tags.includes('@mixed') ? signInAsAdmin : signIn)(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   await openFileManager(page);
@@ -19,7 +19,7 @@ test.beforeEach(async ({ page, onCleanup }) => {
   });
 });
 
-test('Создание и переименование папки и текстового файла', { tag: ['@files', '@fil02', '@fil03', '@admin', '@base'] }, async ({ page, onCleanup }) => {
+test('Создание и переименование папки и текстового файла', { tag: ['@files', '@fil02', '@fil03', '@base'] }, async ({ page, onCleanup }) => {
   test.setTimeout(60_000);
   const original = 'Проверка текста', renamed = 'Сохранённые записи';
   onCleanup(async () => {
@@ -54,7 +54,7 @@ test('Создание и переименование папки и текст�
   await expect(fileNode(page, nested)).toHaveCount(0);
 });
 
-test('Загрузка и скачивание файла без повреждений', { tag: ['@files', '@fil04', '@admin', '@base'] }, async ({ page, onCleanup }) => {
+test('Загрузка и скачивание файла без повреждений', { tag: ['@files', '@fil04', '@base'] }, async ({ page, onCleanup }) => {
   test.setTimeout(60_000);
   const name = 'Проверка данных';
   const sample = Buffer.from(Array.from({ length: 1024 }, (_, i) => i % 256));
@@ -87,7 +87,7 @@ test('Загрузка и скачивание файла без поврежд�
   expect(createHash('sha256').update(result).digest('hex')).toBe(createHash('sha256').update(sample).digest('hex'));
 });
 
-test('Запрет чтения, изменения и удаления файла без прав', { tag: ['@files', '@fil09', '@access', '@base'] }, async ({ page, onCleanup }) => {
+test('Запрет чтения, изменения и удаления файла без прав', { tag: ['@files', '@fil09', '@access', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
   test.setTimeout(90_000);
   const name = 'Закрытые записи', filename = 'Журнал доступа.txt';
   const original = 'Контрольная запись: доступ ограничен';
@@ -97,7 +97,7 @@ test('Запрет чтения, изменения и удаления файл
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     await openProject(page, projectName);
     await cleanupFileFolder(page, name);
   });
@@ -114,7 +114,7 @@ test('Запрет чтения, изменения и удаления файл
     await page.locator(`#param_device td.${kind}`).click();
     const form = page.locator('#form_edit_file_mode');
     await expect(form).toBeVisible();
-    const row = form.locator(`#table_data_on_users tr[id="${bootstrapIdentity(kind)}"]`);
+    const row = form.locator(`#table_data_on_users tr[id="${await testIdentity(page, kind)}"]`);
     await expect(row).toHaveCount(1);
     await expect(row.locator('td').nth(0)).not.toHaveClass(/\bcheck_sms\b/);
     await expect(row.locator('td').nth(1)).not.toHaveClass(/\bcheck_sms\b/);
@@ -149,7 +149,7 @@ test('Запрет чтения, изменения и удаления файл
   });
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'admin';
   await openProject(page, projectName);
   await openFileManager(page);

@@ -3,11 +3,20 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './helpers/test';
-import { ensureProject, openProject, projectName, signInAsTest, signOut } from './helpers/scada';
+import { ensureProject, openProject, projectName, signIn, signOut, isAdminRun } from './helpers/scada';
 import { deleteMnemonic, ensureMnemonic, openMnemonicEditor, saveMnemonicEditor } from './helpers/mnemonic';
 
-test('Загрузка шрифта и применение к тексту схемы', { tag: ['@settings', '@set03', '@set04', '@admin', '@base'] }, async ({ page, onCleanup }, testInfo) => {
+test('Доступ к загрузке шрифта и применение к тексту схемы', { tag: ['@settings', '@set03', '@set04', '@base'] }, async ({ page, onCleanup }, testInfo) => {
   test.setTimeout(90_000);
+  await signIn(page);
+  await ensureProject(page, projectName);
+  await openProject(page, projectName);
+  if (!isAdminRun()) {
+    await expect(page.locator('#panel_right [title="Настройки"]')).toHaveCount(0);
+    const response = await page.request.get('/form_options/', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, maxRedirects: 0 });
+    expect(response.status(), 'Настройки шрифтов доступны только администратору').toBe(403);
+    return;
+  }
   const originalName = 'Шрифт операторской панели';
   const editedName = 'Шрифт диспетчерской панели';
   const draftName = 'Черновик шрифта панели';
@@ -87,9 +96,6 @@ test('Загрузка шрифта и применение к тексту сх
     expect(actual.length).toBe(fixture.length);
     expect(digest(actual)).toBe(originalHash);
   };
-  await signInAsTest(page);
-  await ensureProject(page, projectName);
-  await openProject(page, projectName);
   await openSettings();
   await expect(rowByName(originalName), 'Существующий одноимённый шрифт не удаляем').toHaveCount(0);
   await expect(rowByName(editedName), 'Существующий одноимённый шрифт не удаляем').toHaveCount(0);
@@ -103,7 +109,7 @@ test('Загрузка шрифта и применение к тексту сх
     }
     if (mnemonicEditor && !mnemonicEditor.isClosed()) await mnemonicEditor.close();
     if (await page.getByRole('textbox', { name: 'Логин' }).isVisible()) {
-      await signInAsTest(page);
+      await signIn(page);
       await openProject(page, projectName);
     }
     if (await editor.isVisible()) await editor.locator('#form_cancel').click();
@@ -166,7 +172,7 @@ test('Загрузка шрифта и применение к тексту сх
     await expect(rowByName(editedName)).toHaveAttribute('rec_id', fontId);
     await options.locator('.header > .close_form').click();
     await signOut(page);
-    await signInAsTest(page);
+    await signIn(page);
     await openProject(page, projectName);
     await openSettings();
     await expect(rowByName(originalName)).toHaveCount(0);

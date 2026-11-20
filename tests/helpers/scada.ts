@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { bootstrapData } from './bootstrap-data';
 import { requireOwned, saveOwned } from './owned';
 
@@ -46,16 +46,29 @@ export async function chooseTag(page: Page, picker: Locator, deviceName: string,
 }
 
 export function testUser() {
+  if (bootstrapData.login.toLowerCase() === bootstrapData.admin.login.toLowerCase()) throw new Error('Администратор и тестовый пользователь должны различаться');
   return bootstrapData.login;
 }
 
-export async function signIn(page: Page) {
-  await signInWithCredentials(page, bootstrapData.login, bootstrapData.password);
+export function isAdminRun() {
+  return test.info().project.metadata.role === 'admin';
 }
 
-export async function signInAsTest(page: Page) {
+export function currentUser() {
+  return isAdminRun() ? bootstrapData.admin.login : testUser();
+}
+
+export async function signIn(page: Page, credentials?: { login: string; password: string }) {
+  if (!credentials && isAdminRun()) return signInAsAdmin(page);
+  credentials ??= { login: bootstrapData.login, password: bootstrapData.password };
+  if (!credentials.login || !credentials.password) throw new Error('Задайте USER и PASSWORD подготовленного пользователя в .env');
+  if (credentials.login.toLowerCase() === bootstrapData.admin.login.toLowerCase()) throw new Error('Администратор и тестовый пользователь должны различаться');
+  await signInWithCredentials(page, credentials.login, credentials.password);
+}
+
+export async function signInAsAdmin(page: Page) {
   const { login: user, password } = bootstrapData.admin;
-  if (!user || !password) throw new Error('Задайте USER и PASSWORD администратора в .env');
+  if (!user || !password) throw new Error('Задайте ADMIN и ADMIN_PASSWORD администратора в .env');
   await signInWithCredentials(page, user, password);
 }
 
@@ -87,12 +100,7 @@ export async function ensureProject(page: Page, name: string) {
   await expect(page.locator('#count_data')).toBeVisible();
   const projects = page.locator('#table_option');
   const project = projects.getByRole('cell', { name, exact: true });
-  if (await project.count()) return;
-
-  await page.locator('#header_main .btn_add').filter({ hasText: '+Добавить' }).click();
-  await page.locator('#form_edit_project #name').fill(name);
-  await page.locator('#form_edit_project #form_ok').click();
-  await expect(project).toBeVisible();
+  await expect(project, `Заранее создайте проект «${name}» и выдайте пользователю доступ`).toHaveCount(1);
 }
 
 export async function openProject(page: Page, name: string) {

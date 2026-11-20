@@ -1,15 +1,15 @@
 import { expect, test } from './helpers/test';
-import { bootstrapIdentity } from './helpers/bootstrap-data';
+import { testIdentity } from './helpers/bootstrap-data';
 import {
   projectName, ensureAlarmThreshold, ensureProject, ensureTagAlarm, expectNewAlarmEvent,
-  openProject, openTagAlarms, setTagValue, signInAsTest, signIn, signOut,
+  openProject, openTagAlarms, setTagValue, signInAsAdmin, signIn, signOut,
 } from './helpers/scada';
 import { acknowledgeAlarm, alarmEventIds, alarmName, alarmTag, cleanupAlarmTag, prepareAlarmTag, prepareThresholdAlarm } from './helpers/alarm';
 import { getAlarmPanelVisibility, setAlarmPanelVisibility } from './helpers/access';
 
-test('Снятие аварии с учётом гистерезиса', { tag: ['@alarm', '@f05', '@admin', '@base'] }, async ({ page, onCleanup }) => {
+test('Снятие аварии с учётом гистерезиса', { tag: ['@alarm', '@f05', '@base'] }, async ({ page, onCleanup }) => {
   test.setTimeout(90_000);
-  await signInAsTest(page);
+  await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   onCleanup(async () => {
@@ -56,13 +56,13 @@ test('Снятие аварии с учётом гистерезиса', { tag: 
 });
 
 test.describe('Подтверждение аварий', () => {
-  test.beforeEach(async ({ page }) => {
-    await signInAsTest(page);
+  test.beforeEach(async ({ page }, info) => {
+    await (info.tags.includes('@mixed') ? signInAsAdmin : signIn)(page);
     await ensureProject(page, projectName);
     await openProject(page, projectName);
   });
 
-  test('Запрет подтверждения аварии без права', { tag: ['@alarm', '@access', '@alm11', '@base'] }, async ({ page, onCleanup }) => {
+  test('Запрет подтверждения аварии без права', { tag: ['@alarm', '@access', '@alm11', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
     test.setTimeout(90_000);
     let role: 'admin' | 'operator' | 'none' = 'admin';
     let originalPanel: boolean | undefined;
@@ -71,7 +71,7 @@ test.describe('Подтверждение аварий', () => {
         await signOut(page);
         role = 'none';
       }
-      if (role === 'none') await signInAsTest(page);
+      if (role === 'none') await signInAsAdmin(page);
       try {
         await openProject(page, projectName);
         await cleanupAlarmTag(page);
@@ -84,11 +84,11 @@ test.describe('Подтверждение аварий', () => {
     const config = page.locator('#table_edit_alarms tr').filter({ hasText: alarmName });
     await config.locator('td.user').click();
     const users = page.locator('#form_edit_accept_on_users');
-    await expect(users.locator(`tr[id="${bootstrapIdentity('user')}"]`).locator('td').first()).toHaveClass(/\buncheck\b/);
+    await expect(users.locator(`tr[id="${await testIdentity(page, 'user')}"]`).locator('td').first()).toHaveClass(/\buncheck\b/);
     await users.locator('#form_cancel').click();
     await config.locator('td.group').click();
     const groups = page.locator('#form_edit_accept_on_groups');
-    await expect(groups.locator(`tr[id="${bootstrapIdentity('group')}"]`).locator('td').first()).toHaveClass(/\buncheck\b/);
+    await expect(groups.locator(`tr[id="${await testIdentity(page, 'group')}"]`).locator('td').first()).toHaveClass(/\buncheck\b/);
     await groups.locator('#form_cancel').click();
     await page.locator('#form_edit_alarms_from_tag #form_cancel').click();
     await setTagValue(page, alarmTag, 101);
@@ -118,14 +118,14 @@ test.describe('Подтверждение аварий', () => {
     await expect(row).toHaveAttribute('status', '1');
     await signOut(page);
     role = 'none';
-    await signInAsTest(page);
+    await signInAsAdmin(page);
     role = 'admin';
     await openProject(page, projectName);
     await expect(row).toHaveAttribute('status', '1');
     await acknowledgeAlarm(page, row);
   });
 
-  test('Подтверждение активной аварии и запись в историю', { tag: ['@alarm', '@admin', '@alm04', '@base'] }, async ({ page, onCleanup }) => {
+  test('Подтверждение активной аварии и запись в историю', { tag: ['@alarm', '@alm04', '@base'] }, async ({ page, onCleanup }) => {
     test.setTimeout(60_000);
     onCleanup(async () => {
       await cleanupAlarmTag(page);
@@ -148,7 +148,7 @@ test.describe('Подтверждение аварий', () => {
     await expectNewAlarmEvent(page, seen, alarmName, 'Авария устранена. v=0', 'ev_check');
   });
 
-  test('Повторное подтверждение новой аварии', { tag: ['@alarm', '@admin', '@alm05', '@base'] }, async ({ page, onCleanup }) => {
+  test('Повторное подтверждение новой аварии', { tag: ['@alarm', '@alm05', '@base'] }, async ({ page, onCleanup }) => {
     test.setTimeout(60_000);
     onCleanup(async () => {
       await cleanupAlarmTag(page);

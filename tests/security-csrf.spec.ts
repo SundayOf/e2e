@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { openMyProfile, openTestUserForm, readEditRights, restoreTestUserProfile, saveMyProfileName } from './helpers/access';
-import { signIn, signInAsTest, signOut } from './helpers/scada';
+import { signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { browserJsonPost, startOriginPage } from './helpers/csrf';
 
 for (const variant of [
@@ -15,7 +15,7 @@ for (const variant of [
     let attacker: Page | undefined;
     let originServer: Awaited<ReturnType<typeof startOriginPage>> | undefined;
     try {
-      await signInAsTest(page);
+      await signInAsAdmin(page);
       role = 'admin';
       const adminForm = await openTestUserForm(page);
       original = { name: await adminForm.locator('#name').inputValue(), rights: await readEditRights(adminForm) };
@@ -64,7 +64,7 @@ for (const variant of [
       expect.soft(simpleName, 'Простой запрос чужой страницы не должен менять имя').toBe(original.name);
       await signOut(page);
       role = 'none';
-      await signInAsTest(page);
+      await signInAsAdmin(page);
       role = 'admin';
       const simpleSaved = await openTestUserForm(page);
       await expect(simpleSaved.locator('#name')).toHaveValue(simpleName);
@@ -84,7 +84,7 @@ for (const variant of [
       await form.locator('#form_cancel').click();
       await signOut(page);
       role = 'none';
-      await signInAsTest(page);
+      await signInAsAdmin(page);
       role = 'admin';
       const saved = await openTestUserForm(page);
       await expect(saved.locator('#name')).toHaveValue(observed);
@@ -105,7 +105,7 @@ for (const variant of [
         await signOut(page);
         role = 'none';
       }
-      if (role === 'none') await signInAsTest(page);
+      if (role === 'none') await signInAsAdmin(page);
       if (original) await restoreTestUserProfile(page, original);
     }
   });

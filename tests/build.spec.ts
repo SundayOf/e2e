@@ -4,7 +4,7 @@ import {
   projectName,
   chooseTag, deleteVirtualDeviceIfPresent, ensureProject, ensureVirtualDevice,
   ensureVirtualTag, expectTagValueUnchanged, openDeviceTags, openDeviceTree, openProject,
-  setTagValue, signIn, testUser,
+  setTagValue, signIn, currentUser,
 } from './helpers/scada';
 import { deleteViewRow, openViewList, viewRow } from './helpers/view';
 import { cleanupTrigger, openTriggerTags, prepareTrigger } from './helpers/trigger';
@@ -33,7 +33,7 @@ test('Просмотр пользователей онлайн', { tag: ['@acces
   await page.locator('#header_main .btn_add[onclick="os.users.info_connect();"]').click();
   await expect(page.locator('#count_connect_users')).toBeVisible();
   await expect(page.locator('#panel_main2 tr[id^="tr_uid_"]')
-    .filter({ has: page.getByRole('cell', { name: testUser(), exact: true }) }).first()).toBeVisible();
+    .filter({ has: page.getByRole('cell', { name: currentUser(), exact: true }) }).first()).toBeVisible();
   await page.locator('#header_main #undo_history_step').click();
   await expect(page.locator('#header_main > div:first-child')).toContainText('Пользователи');
 });

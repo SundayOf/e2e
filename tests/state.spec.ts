@@ -1,12 +1,12 @@
 import { expect, test } from './helpers/test';
 import {
   projectName, ensureAlarmThreshold, ensureProject, ensureTagAlarm,
-  expectNewAlarmEvent, openProject, openTagAlarms, setTagValue, signInAsTest,
+  expectNewAlarmEvent, openProject, openTagAlarms, setTagValue, signIn,
 } from './helpers/scada';
 import { alarmName, alarmTag, cleanupAlarmTag, prepareAlarmTag } from './helpers/alarm';
 
-test('Снятие аварии при возврате к порогу', { tag: ['@alarm', '@admin', '@base'] }, async ({ page, onCleanup }) => {
-  await signInAsTest(page);
+test('Снятие аварии при возврате к порогу', { tag: ['@alarm', '@base'] }, async ({ page, onCleanup }) => {
+  await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   onCleanup(async () => {

@@ -1,4 +1,4 @@
-import { rememberCreated } from './helpers/owned';
+import { rememberCreated, saveOwned } from './helpers/owned';
 import type { Page, TestInfo } from '@playwright/test';
 import { expect, test } from './helpers/test';
 import {
@@ -464,7 +464,7 @@ test('Цвет маркера из тега', { tag: ['@map', '@map06', '@base']
     await form.locator('#type_signal_tag').selectOption({ label: 'Virtual' });
     for (const id of ['format_value', 'format_value_out']) await form.locator(`#${id}`).selectOption({ label: 'Int' });
     await form.locator('#default_value').fill('0');
-    await form.locator('#form_ok').click();
+    await saveOwned(page, '/save_tag/', 'tag_id', () => form.locator('#form_ok').click());
     const row = viewRow(page, tagName);
     await expect(row.locator('td[id^="v"]')).toHaveText('0');
     await row.locator('td.edit').click();

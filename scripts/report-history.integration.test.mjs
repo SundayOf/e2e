@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { inside } from './report-history.mjs';
 
-test('Три headed-прогона сохраняют историю, трассу ошибки и файлы без results-дублей', t => {
+test('Three headed runs preserve history, failure traces and files without duplicate results', t => {
   mkdirSync('reports', { recursive: true });
   const directory = mkdtempSync(resolve('reports/html-history-check-'));
   t.after(() => {
@@ -32,7 +32,7 @@ test('Три headed-прогона сохраняют историю, трасс
   writeFileSync(join(directory, 'probe.spec.ts'), `
     import { test, expect } from '@playwright/test';
     import { writeFileSync } from 'node:fs';
-    test('Проверка отчёта: локальная страница, не SCADA', async ({ page }, testInfo) => {
+    test('Report probe using a local page', async ({ page }, testInfo) => {
       await test.step('Открыть локальную страницу для проверки отчёта', async () => {
         await page.setContent('<h1>Проверка HTML-отчёта</h1><p>Это искусственный пример, не ошибка SCADA.</p>');
         await expect(page.getByRole('heading')).toHaveText('Проверка HTML-отчёта');

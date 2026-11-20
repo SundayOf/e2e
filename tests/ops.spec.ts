@@ -1,9 +1,9 @@
 import { stat } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { projectName, ensureProject, openProject, signInAsTest } from './helpers/scada';
+import { projectName, ensureProject, openProject, signInAsAdmin } from './helpers/scada';
 
 test('Скачивание готовой резервной копии', { tag: ['@files', '@backup', '@admin', '@scenario'] }, async ({ page }) => {
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   const loaded = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === '/edit_backup/');

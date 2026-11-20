@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { projectName, testUser } from './scada';
-import { bootstrapData, bootstrapIdentity } from './bootstrap-data';
+import { testIdentity } from './bootstrap-data';
 
 export const testUserRow = (page: Page) => page.locator(`#table_option tr[fl="${testUser().toLowerCase()}"]`);
 
@@ -90,7 +90,7 @@ async function openTestGroup(page: Page) {
   await testUserRow(page).locator('td.group').click();
   await (await loaded).finished();
   const form = page.locator('#form_edit_user_on_groups');
-  const group = form.locator('tr').filter({ has: page.getByRole('cell', { name: bootstrapData.group, exact: true }) }).locator('td').first();
+  const group = form.locator(`tr[id="${await testIdentity(page, 'group')}"]`).locator('td').first();
   await expect(group).toBeVisible();
   return { form, group };
 }
@@ -123,7 +123,7 @@ async function openTagAcl(page: Page, tag: Locator, kind: 'user' | 'group') {
   await tag.locator(`td.${kind}`).click();
   await (await loaded).finished();
   const form = page.locator(`#form_edit_accept_on_${plural}`);
-  const cell = form.locator(`tr[id="${bootstrapIdentity(kind)}"]`).locator('td').first();
+  const cell = form.locator(`tr[id="${await testIdentity(page, kind)}"]`).locator('td').first();
   await expect(cell).toBeVisible();
   return { form, cell };
 }

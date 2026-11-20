@@ -1,13 +1,13 @@
 import { expect, test } from './helpers/test';
 import { getTestGroup, openMyProfile, openTestUserForm, readEditRights, restoreTestUserProfile, saveMyProfileName, setTestGroup } from './helpers/access';
-import { openProject, projectName, signIn, signInAsTest, signOut } from './helpers/scada';
+import { openProject, projectName, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { replayUiPost } from './helpers/security';
 
 for (const field of [
   { id: 'enable_edit_config', title: 'настройка проекта' },
   { id: 'enable_edit_right', title: 'управление правами' },
 ]) {
-  test(`Запрет выдачи себе права «${field.title}» через профиль`, { tag: ['@security', '@access', '@rights', '@sec05', '@base'] }, async ({ page, onCleanup }) => {
+  test(`Запрет выдачи себе права «${field.title}» через профиль`, { tag: ['@security', '@access', '@rights', '@sec05', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
     test.setTimeout(90_000);
     let role: 'admin' | 'operator' | 'none' = 'none';
     let initialGroup: boolean | undefined;
@@ -22,7 +22,7 @@ for (const field of [
         await signOut(page);
         role = 'none';
       }
-      if (role === 'none') await signInAsTest(page);
+      if (role === 'none') await signInAsAdmin(page);
       try {
         if (original) await restoreTestUserProfile(page, original);
       } finally {
@@ -32,7 +32,7 @@ for (const field of [
         }
       }
     });
-    await signInAsTest(page);
+    await signInAsAdmin(page);
     role = 'admin';
     initialGroup = await getTestGroup(page);
     const form = await openTestUserForm(page);
@@ -71,7 +71,7 @@ for (const field of [
     expect.soft(response.status(), 'Лишнее поле не должно приводить к ошибке сервера').toBeLessThan(500);
     await signOut(page);
     role = 'none';
-    await signInAsTest(page);
+    await signInAsAdmin(page);
     role = 'admin';
     await test.step('Проверить имя и права от имени администратора', async () => {
       const saved = await openTestUserForm(page);

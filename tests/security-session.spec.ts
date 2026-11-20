@@ -1,10 +1,10 @@
 import { expect, test } from './helpers/test';
 import type { APIRequestContext } from '@playwright/test';
 import { allowTagGroupWrite, expectTagAcl, getTestGroup, setTestGroup } from './helpers/access';
-import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, signInAsTest, signOut } from './helpers/scada';
+import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { replayUiPost } from './helpers/security';
 
-test('Запрет записи тега из завершённого сеанса', { tag: ['@security', '@access', '@session', '@tags', '@sec06', '@base'] }, async ({ page, playwright, onCleanup }) => {
+test('Запрет записи тега из завершённого сеанса', { tag: ['@security', '@access', '@session', '@tags', '@sec06', '@mixed', '@permissions'] }, async ({ page, playwright, onCleanup }) => {
   test.setTimeout(90_000);
   const device = 'Контроль сессии';
   const tag = 'Уровень бака';
@@ -17,7 +17,7 @@ test('Запрет записи тега из завершённого сеан�
         await signOut(page);
         session.role = 'none';
       }
-      if (session.role === 'none') await signInAsTest(page);
+      if (session.role === 'none') await signInAsAdmin(page);
       try {
         const valueForm = page.locator('#form_edit');
         if (await valueForm.isVisible()) await valueForm.locator('#form_cancel').click();
@@ -36,7 +36,7 @@ test('Запрет записи тега из завершённого сеан�
     }
   });
   await test.step('Создать тег с правом записи для группы', async () => {
-    await signInAsTest(page);
+    await signInAsAdmin(page);
     session.role = 'admin';
     initialGroup = await getTestGroup(page);
     await setTestGroup(page, true);
@@ -91,7 +91,7 @@ test('Запрет записи тега из завершённого сеан�
     await setTagValue(page, tag, 3);
     await signOut(page);
     session.role = 'none';
-    await signInAsTest(page);
+    await signInAsAdmin(page);
     session.role = 'admin';
     await openProject(page, projectName);
     await openDeviceTree(page);

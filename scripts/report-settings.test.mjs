@@ -19,7 +19,7 @@ function seed(root, n, extra = {}) {
   return { id, dir };
 }
 
-test('Настройки сохраняются, проверяются и не удаляют данные при сохранении', t => {
+test('Saving settings validates values without deleting data', t => {
   const root = fixture(t);
   const old = seed(root, 1);
   const settings = { ...getSettings(root), maxRuns: 1, passedDays: 2, failedDays: 3, keepBase: 0, maxBytes: 0, autoCleanup: false, protectLatest: false };
@@ -31,7 +31,7 @@ test('Настройки сохраняются, проверяются и не 
   assert.throws(() => updateSettings(root, { ...settings, maxBytes: null }));
 });
 
-test('Нулевые лимиты отключаются; предпросмотр ничего не удаляет', t => {
+test('Zero disables limits and cleanup preview deletes nothing', t => {
   const root = fixture(t);
   seed(root, 1, { started: 0 });
   seed(root, 2);
@@ -43,7 +43,7 @@ test('Нулевые лимиты отключаются; предпросмот
   assert.equal(historyState(root).runs.length, 2);
 });
 
-test('Ручное удаление сохраняет закреплённые/активные и отвергает неизвестные ID целиком', t => {
+test('Manual deletion protects pinned and active runs and rejects unknown IDs', t => {
   const root = fixture(t);
   const pinned = seed(root, 1);
   writeFileSync(join(pinned.dir, '.keep'), 'keep');
@@ -57,7 +57,7 @@ test('Ручное удаление сохраняет закреплённые/
   assert.equal(existsSync(latest.dir), false);
 });
 
-test('Повреждённые метаданные не ломают каталог и не попадают в очистку', t => {
+test('Corrupt metadata does not break the catalog or enter cleanup', t => {
   const root = fixture(t);
   const damaged = seed(root, 1, { selection: 'wrong type' });
   const valid = seed(root, 2, { selection: ['Открытие руководства'] });
@@ -66,7 +66,7 @@ test('Повреждённые метаданные не ломают катал
   assert.ok(existsSync(damaged.dir));
 });
 
-test('Размер разделяет сохранённые отчёты и файлы выполняющегося прогона', t => {
+test('Storage usage separates saved reports from active run files', t => {
   const root = fixture(t);
   const saved = seed(root, 1);
   const active = seed(root, 2, { status: 'running' });

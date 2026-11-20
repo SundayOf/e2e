@@ -43,7 +43,7 @@ test.afterAll(async () => {
   }
 });
 
-test('Настройки хранения, закрепление и удаление отчётов', async ({ page }) => {
+test('Report retention settings, pinning and deletion', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(url);

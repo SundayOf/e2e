@@ -1,7 +1,7 @@
 import { expect, test } from './helpers/test';
 import {
   ensureProject, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject,
-  openTrendList, projectName, setTagValue, signInAsTest,
+  openTrendList, projectName, setTagValue, signIn,
 } from './helpers/scada';
 import { openMenuEditor } from './helpers/menu';
 import { prepareOperatorTrend, removeOperatorTrend } from './helpers/trend';
@@ -18,7 +18,7 @@ test('Добавление и удаление метки на тренде', { 
   const device = `${name}Device`;
   const title = 'Проверка времени метки';
   let markId = '';
-  await signInAsTest(page);
+  await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
   const eventsSelected = await page.locator('#check_events').isChecked();
@@ -131,7 +131,6 @@ test('Добавление и удаление метки на тренде', { 
   let point: Point | undefined;
   let event: Event | undefined;
   await test.step('Найти измерение и событие на тренде', async () => {
-    // shortcut: 15 с — бюджет наблюдения архива на стенде, не SLA.
     await expect.poll(async () => {
       const data = await readDisplay();
       point = data.values.find(p => p.v1 === 2);
@@ -153,7 +152,10 @@ test('Добавление и удаление метки на тренде', { 
     expect(selected).toBeGreaterThanOrEqual(before.start);
     expect(selected).toBeLessThanOrEqual(before.end);
     await context.locator(':scope > li.submenu > button').filter({ hasText: 'Метки' }).hover();
+    const opened = page.waitForResponse(r => new URL(r.url()).pathname.startsWith('/edit_mark_tag/') && r.request().method() === 'GET');
     await context.locator('button[onclick="os.tags.marks.add()"]').click();
+    const openedResponse = await opened;
+    expect(openedResponse.ok(), `Открытие формы метки: HTTP ${openedResponse.status()}`).toBe(true);
     const editor = page.locator('#form_edit_mark_tag');
     await expect(editor).toBeVisible();
     await editor.locator('#title').fill(title);

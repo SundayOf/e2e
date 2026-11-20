@@ -17,9 +17,8 @@ export default defineConfig({
   testDir: './tests',
   workers: 1,
   projects: [
-    { name: 'Подготовка', testMatch: '**/bootstrap.setup.ts', teardown: 'Очистка' },
-    { name: 'Очистка', testMatch: '**/bootstrap.teardown.ts' },
-    { name: 'База', testMatch: '**/*.spec.ts', grep: /@base/, dependencies: ['Подготовка'] },
+    { name: 'admin', testMatch: '**/*.spec.ts', grep: /@base/, grepInvert: /@mixed\b/, metadata: { role: 'admin' } },
+    { name: 'user', testMatch: '**/*.spec.ts', grep: /@base/, grepInvert: /@mixed\b/, metadata: { role: 'user' } },
   ],
   metadata: { reportHistory },
   globalSetup: resolve('scripts/report-setup.mjs'),

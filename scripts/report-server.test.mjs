@@ -33,7 +33,7 @@ function seed(root, n) {
   return { id, dir };
 }
 
-test('API сохраняет настройки и требует актуальный предпросмотр очистки', async t => {
+test('The API saves settings and requires a current cleanup preview', async t => {
   const { root, post, state } = await fixture(t);
   const old = seed(root, 1);
   seed(root, 2);
@@ -50,7 +50,7 @@ test('API сохраняет настройки и требует актуаль
   assert.equal(existsSync(old.dir), false);
 });
 
-test('API отклоняет чужие запросы, некорректные настройки и изменения во время прогона', async t => {
+test('The API rejects foreign requests, invalid settings and changes during a run', async t => {
   const { root, post, state } = await fixture(t);
   assert.equal((await post('settings', state.settings, { Origin: 'http://example.com' })).status, 403);
   assert.equal((await post('settings', state.settings, { 'X-Report-Token': 'wrong' })).status, 403);
@@ -60,7 +60,7 @@ test('API отклоняет чужие запросы, некорректные
   finally { await release(); }
 });
 
-test('Сервер открывает отчёт, скачивает файлы и не отдаёт служебные пути', async t => {
+test('The server serves reports and downloads without exposing internal paths', async t => {
   const { root, base } = await fixture(t);
   const run = seed(root, 1);
   mkdirSync(join(run.dir, 'html', 'extra'));

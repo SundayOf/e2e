@@ -1,10 +1,10 @@
 import { expect, test } from './helpers/test';
-import { deleteVirtualDeviceIfPresent, ensureProject, ensureVirtualDevice, openDeviceTree, openProject, projectName, signIn, signInAsTest } from './helpers/scada';
+import { deleteVirtualDeviceIfPresent, ensureProject, ensureVirtualDevice, openDeviceTree, openProject, projectName, signIn, isAdminRun } from './helpers/scada';
 import { deleteMenuLink, ensureMenuLink, openMenuEditor } from './helpers/menu';
 import { deleteMnemonic, ensureMnemonic } from './helpers/mnemonic';
 
-test.beforeEach(async ({ page }, testInfo) => {
-  await (testInfo.tags.includes('@admin') ? signInAsTest : signIn)(page);
+test.beforeEach(async ({ page }) => {
+  await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);
 });
@@ -95,8 +95,13 @@ test('Открытие схемы в редакторе и из меню', { tag
   await expect(page.locator('#main > svg#my_svg')).toBeVisible();
 });
 
-test('Просмотр резервных копий', { tag: ['@files', '@admin', '@base'] }, async ({ page }) => {
-  await page.locator('#panel_right [title="Резервные копии"]').click();
+test('Доступ к резервным копиям', { tag: ['@files', '@backup', '@base'] }, async ({ page }) => {
+  const entry = page.locator('#panel_right [title="Резервные копии"]');
+  if (!isAdminRun()) {
+    await expect(entry, 'Обычному пользователю пункт резервных копий недоступен').toHaveCount(0);
+    return;
+  }
+  await entry.click();
   await expect(page.locator('#header_main > div:first-child')).toContainText('Резервных копий:');
   await expect(page.locator('#table_option')).toBeVisible();
 });
@@ -107,8 +112,13 @@ test('Открытие файлового менеджера', { tag: ['@files',
   await expect(page.locator('#panel_main2 #main')).toBeVisible();
 });
 
-test('Открытие и закрытие настроек', { tag: ['@menu', '@admin', '@base'] }, async ({ page }) => {
-  await page.locator('#panel_right [title="Настройки"]').click();
+test('Доступ к настройкам', { tag: ['@menu', '@settings', '@base'] }, async ({ page }) => {
+  const entry = page.locator('#panel_right [title="Настройки"]');
+  if (!isAdminRun()) {
+    await expect(entry, 'Обычному пользователю пункт настроек недоступен').toHaveCount(0);
+    return;
+  }
+  await entry.click();
   const form = page.locator('#form_options');
   await expect(form).toBeVisible();
   await expect(form.locator('#table_options_fonts')).toBeVisible();
@@ -116,8 +126,13 @@ test('Открытие и закрытие настроек', { tag: ['@menu', '
   await expect(form).toBeHidden();
 });
 
-test('Открытие и закрытие окна «О программе»', { tag: ['@menu', '@admin', '@base'] }, async ({ page }) => {
-  await page.locator('#panel_right [title="О программе"]').click();
+test('Доступ к окну «О программе»', { tag: ['@menu', '@about', '@base'] }, async ({ page }) => {
+  const entry = page.locator('#panel_right [title="О программе"]');
+  if (!isAdminRun()) {
+    await expect(entry, 'Обычному пользователю пункт «О программе» недоступен').toHaveCount(0);
+    return;
+  }
+  await entry.click();
   const form = page.locator('#form_info_program');
   await expect(form).toBeVisible();
   await expect(form.locator('.header')).toContainText('О программе');

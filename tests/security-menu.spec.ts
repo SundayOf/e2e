@@ -1,9 +1,9 @@
 import { expect, test } from './helpers/test';
 import { createMenuFolder, deleteMenuLink, openMenuEditor } from './helpers/menu';
-import { openProject, projectName, signIn, signInAsTest, signOut } from './helpers/scada';
+import { openProject, projectName, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { scriptMarkers, watchScriptMarker } from './helpers/security';
 
-test('Отображение спецсимволов в названии папки меню', { tag: ['@security', '@access', '@menu', '@sec09', '@pen01', '@base'] }, async ({ page, onCleanup }) => {
+test('Отображение спецсимволов в названии папки меню', { tag: ['@security', '@access', '@menu', '@sec09', '@pen01', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
   test.setTimeout(90_000);
   const name = 'Раздел проверки ввода';
   const form = page.locator('#form_edit_menu_item');
@@ -57,7 +57,7 @@ test('Отображение спецсимволов в названии пап
       for (const role of ['автор', 'администратор']) {
         if (role === 'администратор') {
           await signOut(page);
-          await signInAsTest(page);
+          await signInAsAdmin(page);
           await openProject(page, projectName);
         }
         await test.step(`Дерево, левое меню и форма: ${role}`, async () => {

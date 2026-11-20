@@ -1,8 +1,8 @@
 import { expect, test } from './helpers/test';
-import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, signIn, signInAsTest, signOut } from './helpers/scada';
+import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { scriptMarkers, watchScriptMarker } from './helpers/security';
 
-test('Отображение спецсимволов в названии и единице тега', { tag: ['@security', '@access', '@tags', '@sec09', '@pen01', '@base'] }, async ({ page, onCleanup }) => {
+test('Отображение спецсимволов в названии и единице тега', { tag: ['@security', '@access', '@tags', '@sec09', '@pen01', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
   test.setTimeout(120_000);
   const device = 'Датчик проверки ввода';
   const name = 'Уровень бака';
@@ -55,7 +55,7 @@ test('Отображение спецсимволов в названии и е�
         for (const reader of ['автор', 'администратор'] as const) {
           if (reader === 'администратор') {
             await signOut(page);
-            await signInAsTest(page);
+            await signInAsAdmin(page);
             role = 'администратор';
             await openProject(page, projectName);
           }

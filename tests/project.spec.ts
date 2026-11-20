@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { ensureProject, openProject, projectName, signIn } from './helpers/scada';
 
-test('Создание и открытие проекта', { tag: ['@project', '@base'] }, async ({ page }) => {
+test('Открытие подготовленного проекта', { tag: ['@project', '@base'] }, async ({ page }) => {
   await signIn(page);
   await ensureProject(page, projectName);
   await openProject(page, projectName);

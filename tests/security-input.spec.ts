@@ -1,5 +1,5 @@
 import { expect, test } from './helpers/test';
-import { openProject, projectName, signIn, signInAsTest, signOut } from './helpers/scada';
+import { openProject, projectName, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { scriptMarkers, watchScriptMarker } from './helpers/security';
 import { deleteViewRow, openViewList, viewRow } from './helpers/view';
 import { saveOwned } from './helpers/owned';
@@ -8,7 +8,7 @@ for (const item of [
   { kind: 'карты', menu: 'Карты', heading: 'Карты', form: '#form_edit_map', name: 'План проверки', path: '/save_map/', question: 'Удалить карту(ы)?', tag: '@map' },
   { kind: 'камеры', menu: 'Камеры IP', heading: 'Камеры', form: '#form_edit_camera', name: 'Камера проверки', path: '/save_camera/', question: 'Удалить камеру(ы)?', tag: '@camera' },
 ]) {
-  test(`Отображение спецсимволов в названии ${item.kind}`, { tag: ['@security', '@access', '@sec09', '@pen01', item.tag, '@base'] }, async ({ page, onCleanup }) => {
+  test(`Отображение спецсимволов в названии ${item.kind}`, { tag: ['@security', '@access', '@sec09', '@pen01', item.tag, '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
     test.setTimeout(90_000);
     const checkSafe = await watchScriptMarker(page);
     const form = page.locator(item.form);
@@ -65,7 +65,7 @@ for (const item of [
         for (const role of ['автор', 'администратор']) {
           if (role === 'администратор') {
             await signOut(page);
-            await signInAsTest(page);
+            await signInAsAdmin(page);
             await openProject(page, projectName);
           }
           await test.step(`Повторное чтение: ${role}`, async () => {

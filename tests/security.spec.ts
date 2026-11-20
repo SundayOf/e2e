@@ -1,9 +1,9 @@
 import { expect, test } from './helpers/test';
 import { allowTagGroupWrite, expectTagAcl, getTestGroup, openTestUsers, setTestGroup, testUserRow } from './helpers/access';
 import { replayUiPost } from './helpers/security';
-import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, renameVirtualDevice, setTagValue, signIn, signInAsTest, signOut } from './helpers/scada';
+import { deleteVirtualDeviceIfPresent, ensureVirtualDevice, ensureVirtualTag, openDeviceTags, openDeviceTree, openProject, projectName, renameVirtualDevice, setTagValue, signIn, signInAsAdmin, signOut } from './helpers/scada';
 
-test('Запрет записи чужого тега подменой номера', { tag: ['@access', '@security', '@tags', '@sec03', '@base'] }, async ({ page, onCleanup }) => {
+test('Запрет записи чужого тега подменой номера', { tag: ['@access', '@security', '@tags', '@sec03', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
   test.setTimeout(90_000);
   const device = 'Контроль доступа';
   const allowed = 'Разрешённый уровень', denied = 'Закрытый уровень';
@@ -14,7 +14,7 @@ test('Запрет записи чужого тега подменой номе�
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     try {
       await openProject(page, projectName);
       await deleteVirtualDeviceIfPresent(page, device);
@@ -27,7 +27,7 @@ test('Запрет записи чужого тега подменой номе�
       }
     }
   });
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'admin';
   initialGroup = await getTestGroup(page);
   await setTestGroup(page, true);
@@ -65,7 +65,7 @@ test('Запрет записи чужого тега подменой номе�
   await test.info().attach('Подмена ID: ответ сервера', { body: String(rejected.status()), contentType: 'text/plain' });
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'admin';
   await openProject(page, projectName);
   await openDeviceTree(page);
@@ -74,7 +74,7 @@ test('Запрет записи чужого тега подменой номе�
   await expect(deniedRow.locator('td[id^="v"]')).toHaveText('0');
 });
 
-test('Запрет изменения устройства без права', { tag: ['@access', '@security', '@rights', '@project', '@sec04', '@base'] }, async ({ page, onCleanup }) => {
+test('Запрет изменения устройства без права', { tag: ['@access', '@security', '@rights', '@project', '@sec04', '@mixed', '@permissions'] }, async ({ page, onCleanup }) => {
   test.setTimeout(90_000);
   const original = 'Защищённый датчик', edited = 'Проверенный датчик';
   let role: 'admin' | 'operator' | 'none' = 'none';
@@ -84,7 +84,7 @@ test('Запрет изменения устройства без права', {
       await signOut(page);
       role = 'none';
     }
-    if (role === 'none') await signInAsTest(page);
+    if (role === 'none') await signInAsAdmin(page);
     try {
       const form = page.locator('#form_edit_user');
       if (await form.isVisible()) await form.locator('#form_cancel').click();
@@ -103,7 +103,7 @@ test('Запрет изменения устройства без права', {
       }
     }
   });
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'admin';
   initialGroup = await getTestGroup(page);
   await openTestUsers(page);
@@ -133,7 +133,7 @@ test('Запрет изменения устройства без права', {
   await test.info().attach('Изменение устройства без права', { body: String(rejected.status()), contentType: 'text/plain' });
   await signOut(page);
   role = 'none';
-  await signInAsTest(page);
+  await signInAsAdmin(page);
   role = 'admin';
   await openProject(page, projectName);
   await openDeviceTree(page);

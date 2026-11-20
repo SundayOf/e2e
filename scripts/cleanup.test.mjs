@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
-test('Очистка выполняется после таймаута и продолжается после ошибки', () => {
+test('Cleanup runs after timeout and continues after an error', () => {
   mkdirSync('reports', { recursive: true });
   const directory = mkdtempSync(resolve('reports/cleanup-check-'));
   const marker = resolve(directory, 'cleaned.txt');
@@ -25,7 +25,7 @@ test('Очистка выполняется после таймаута и пр�
     import { requireOwned, saveOwned } from ${JSON.stringify(ownership)};
     import { deleteTag, ensureVirtualDevice, ensureVirtualTag, setTagFormula, setTagValue } from ${JSON.stringify(scada)};
     import { existsSync, writeFileSync } from 'node:fs';
-    test('Намеренный таймаут', async ({ page, onCleanup }) => {
+    test('Intentional timeout', async ({ page, onCleanup }) => {
       test.setTimeout(1000);
       onCleanup(async () => {
         await page.setContent('<p>cleanup</p>');
@@ -34,14 +34,14 @@ test('Очистка выполняется после таймаута и пр�
       await page.goto('about:blank');
       await new Promise(() => {});
     });
-    test('Очистка завершилась после таймаута', async () => {
+    test('Cleanup completed after timeout', async () => {
       expect(existsSync(${JSON.stringify(marker)})).toBe(true);
     });
-    test('Ошибка одного действия не останавливает остальную очистку', async ({ onCleanup }) => {
+    test('One failed action does not stop the remaining cleanup', async ({ onCleanup }) => {
       onCleanup(async () => { writeFileSync(${JSON.stringify(continued)}, 'cleaned'); });
       onCleanup(async () => { throw new Error('Намеренная ошибка очистки'); });
     });
-    test('Только успешное создание даёт право на удаление объекта', async ({ page, browser }) => {
+    test('Only successful creation grants object ownership', async ({ page, browser }) => {
       let status = 200;
       let payload: Record<string, unknown> = {};
       await page.route('http://ownership.test/**', route => route.fulfill({ contentType: 'text/html', body: '<table></table>' }));
