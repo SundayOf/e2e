@@ -17,7 +17,7 @@ export default defineConfig({
   testDir: './tests',
   workers: 1,
   projects: [
-    { name: 'admin', testMatch: '**/*.spec.ts', grep: /@base/, grepInvert: /@mixed\b/, metadata: { role: 'admin' } },
+    { name: 'admin', default: false, testMatch: '**/*.spec.ts', grep: /@base/, grepInvert: /@mixed\b/, metadata: { role: 'admin' } },
     { name: 'user', testMatch: '**/*.spec.ts', grep: /@base/, grepInvert: /@mixed\b/, metadata: { role: 'user' } },
   ],
   metadata: { reportHistory },

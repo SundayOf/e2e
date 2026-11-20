@@ -54,23 +54,29 @@ test('Report retention settings, pinning and deletion', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Настройки', exact: true })).toBeVisible();
   const oldManifest = join(root, 'runs', oldId, 'run.json');
   const original = readFileSync(oldManifest, 'utf8');
-  writeFileSync(oldManifest, JSON.stringify({ ...JSON.parse(original), status: 'running' }));
-  const initialState = await (await page.request.get(`${url}/api/state`)).json();
-  writeFileSync(join(root, 'settings.json'), JSON.stringify({ ...initialState.settings, maxBytes: initialState.bytes * 2 }));
-  const allFilter = page.getByRole('button', { name: /^Все/ });
-  await allFilter.focus();
-  await page.waitForResponse(response => response.url() === `${url}/api/state` && response.request().method() === 'GET');
-  await expect(page.locator('#temporary-size')).not.toHaveText('0.0 КиБ');
-  await expect(allFilter).toBeFocused();
-  const widths = await page.evaluate(() => ({
-    saved: document.querySelector('#storage-saved')!.getBoundingClientRect().width,
-    temporary: document.querySelector('#storage-temporary')!.getBoundingClientRect().width,
-    track: document.querySelector('#storage-progress')!.getBoundingClientRect().width,
-  }));
-  expect(widths.saved).toBeGreaterThan(0);
-  expect(widths.temporary).toBeGreaterThan(0);
-  expect((widths.saved + widths.temporary) / widths.track).toBeCloseTo(0.5, 2);
-  writeFileSync(oldManifest, original);
+  const { acquireLock } = await import(pathToFileURL(resolve('scripts/report-history.mjs')).href);
+  const release = await acquireLock(root);
+  try {
+    writeFileSync(oldManifest, JSON.stringify({ ...JSON.parse(original), status: 'running' }));
+    const initialState = await (await page.request.get(`${url}/api/state`)).json();
+    writeFileSync(join(root, 'settings.json'), JSON.stringify({ ...initialState.settings, maxBytes: initialState.bytes * 2 }));
+    const allFilter = page.getByRole('button', { name: /^Все/ });
+    await allFilter.focus();
+    await page.waitForResponse(response => response.url() === `${url}/api/state` && response.request().method() === 'GET');
+    await expect(page.locator('#temporary-size')).not.toHaveText('0.0 КиБ');
+    await expect(allFilter).toBeFocused();
+    const widths = await page.evaluate(() => ({
+      saved: document.querySelector('#storage-saved')!.getBoundingClientRect().width,
+      temporary: document.querySelector('#storage-temporary')!.getBoundingClientRect().width,
+      track: document.querySelector('#storage-progress')!.getBoundingClientRect().width,
+    }));
+    expect(widths.saved).toBeGreaterThan(0);
+    expect(widths.temporary).toBeGreaterThan(0);
+    expect((widths.saved + widths.temporary) / widths.track).toBeCloseTo(0.5, 2);
+  } finally {
+    writeFileSync(oldManifest, original);
+    await release();
+  }
   await page.getByRole('button', { name: 'Обновить', exact: true }).click();
   await expect(page.locator('#temporary-size')).toHaveText('0.0 КиБ');
   for (const [theme, background] of [['dark-mode', 'rgb(18, 18, 18)'], ['light-mode', 'rgb(255, 255, 255)']]) {
@@ -140,5 +146,43 @@ test('Report retention settings, pinning and deletion', async ({ page }) => {
   await latest.getByRole('button', { name: 'Удалить', exact: true }).click();
   await confirmation.getByRole('button', { name: 'Удалить', exact: true }).click();
   await expect(page.getByText('Прогоны не найдены', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('Interrupted runs show saved results and attachments without HTML', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const id = '20261120T000000000Z-00000003';
+  const directory = join(root, 'runs', id);
+  mkdirSync(join(directory, 'results'), { recursive: true });
+  writeFileSync(join(directory, 'results', 'ответ.txt'), 'Сохранённое вложение');
+  writeFileSync(join(directory, 'run.json'), JSON.stringify({
+    managedBy: 'scada-playwright-html-v1', id, started: Date.now(), status: 'running',
+    name: 'Проверка прерывания', total: 4, kind: 'selection',
+    tests: [
+      { id: 'one', title: 'Открыть список', project: 'user', status: 'passed', duration: 1200, attachments: [{ name: 'Ответ сервера', path: 'results/ответ.txt' }] },
+      { id: 'two', title: 'Сохранить имя', project: 'user', status: 'failed', duration: 5000, errors: ['Ожидалось сохранённое имя <script>'], attachments: [] },
+      { id: 'three', title: 'Открыть форму', project: 'user', status: 'running', attachments: [] },
+      { id: 'four', title: 'Закрыть форму', project: 'user', status: 'notRun', attachments: [] },
+    ],
+  }));
+  await page.goto(url);
+  const card = page.locator(`[data-id="${id}"]`);
+  await expect(card).toContainText('Прерван');
+  await expect(card).toContainText('Завершено: 2 из 4');
+  await card.getByRole('button', { name: 'Проверка прерывания', exact: true }).click();
+  await expect(card.locator('details')).toHaveAttribute('open', '');
+  await expect(card.locator('.test-status')).toHaveText(['Пройден', 'Ошибка', 'Прерван', 'Не запускался']);
+  await expect(card.locator('.test-error')).toHaveText('Ожидалось сохранённое имя <script>');
+  await expect(card).toContainText('user · 1.2 с');
+  const downloading = page.waitForEvent('download');
+  await card.getByRole('link', { name: 'Ответ сервера', exact: true }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('ответ.txt');
+  expect(await download.failure()).toBeNull();
+  await page.screenshot({ path: testInfo.outputPath('partial-results.png'), fullPage: true });
+  await page.reload();
+  await card.locator('summary').click();
+  await expect(card.locator('.test-status')).toHaveText(['Пройден', 'Ошибка', 'Прерван', 'Не запускался']);
   expect(errors).toEqual([]);
 });

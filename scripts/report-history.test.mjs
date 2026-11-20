@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import HistoryReporter, { pruneHistory, archiveResults, recoverRuns, acquireLock, isFullBase, setPinned, runName } from './report-history.mjs';
+import HistoryReporter, { pruneHistory, archiveResults, recoverRuns, acquireLock, isFullBase, setPinned, runName, historyState } from './report-history.mjs';
 
 const { yazl } = createRequire(import.meta.url)('playwright-core/lib/utilsBundle');
 async function completeHtml(dir) {
@@ -58,6 +58,37 @@ function run(root, number, extra = {}, age = 0) {
   writeFileSync(join(dir, 'payload'), Buffer.alloc(100));
   return dir;
 }
+
+test('Completed results survive interruption and retries replace the previous attempt', t => {
+  const root = fixture(t);
+  const dir = run(root, 1, { status: 'running' });
+  const reporter = new HistoryReporter({ root, runDir: dir });
+  const tests = ['Первый', 'Второй', 'Третий'].map((title, id) => ({
+    id: String(id), title, tags: [], expectedStatus: 'passed', parent: { project: () => ({ name: 'user' }) },
+  }));
+  reporter.onBegin({ allTests: () => tests });
+  const artifact = join(dir, 'results', 'снимок.png');
+  mkdirSync(join(dir, 'results'));
+  writeFileSync(artifact, 'image');
+  reporter.onTestBegin(tests[0], { retry: 0 });
+  reporter.onTestEnd(tests[0], { status: 'failed', retry: 0, duration: 100, errors: [{ message: 'Первая попытка' }], attachments: [] });
+  reporter.onTestBegin(tests[0], { retry: 1 });
+  reporter.onTestEnd(tests[0], { status: 'passed', retry: 1, duration: 50, errors: [], attachments: [{ name: 'Снимок', path: artifact }] });
+  reporter.onTestBegin(tests[1], { retry: 0 });
+  const saved = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8'));
+  assert.deepEqual(saved.tests.map(test => test.status), ['passed', 'running', 'notRun']);
+  assert.equal(saved.tests[0].retry, 1);
+  assert.deepEqual(saved.tests[0].errors, []);
+  assert.equal(saved.tests[0].duration, 50);
+  recoverRuns(root);
+  const state = historyState(root).runs[0];
+  assert.equal(state.status, 'interrupted');
+  assert.equal(state.reportUrl, null);
+  assert.deepEqual(state.tests.map(test => test.status), ['passed', 'interrupted', 'notRun']);
+  assert.equal(state.tests[0].project, 'user');
+  assert.match(state.tests[0].attachments[0].url, /\/attachments\/0\/0$/);
+  assert.ok(existsSync(artifact));
+});
 
 test('Retention keeps the latest, pinned and five full base runs', t => {
   const root = fixture(t);
@@ -184,15 +215,16 @@ test('Only known managed runs can be pinned', t => {
   assert.throws(() => setPinned(root, '../outside', true), /Unknown report/);
 });
 
-test('Full base detection matches the exact test set regardless of npm or npx', () => {
+test('Full base detection matches the exact test set for each role', () => {
   const cli = createRequire(import.meta.url).resolve('@playwright/test/cli');
-  const discovery = spawnSync(process.execPath, [cli, 'test', '--grep', '@base', '--list', '--reporter=json'], { encoding: 'utf8' });
-  assert.equal(discovery.status, 0, discovery.stderr);
-  const tests = [];
-  const collect = suites => { for (const suite of suites) { for (const spec of suite.specs || []) { for (const test of spec.tests) tests.push({ id: spec.id, tags: spec.tags }); } collect(suite.suites || []); } };
-  collect(JSON.parse(discovery.stdout).suites);
-  assert.ok(tests.length > 1);
-  assert.equal(isFullBase(tests, resolve('playwright.config.ts')), true);
-  assert.equal(isFullBase(tests.filter(test => !test.tags.includes('bootstrap')), resolve('playwright.config.ts')), true);
-  assert.equal(isFullBase(tests.slice(0, 1), resolve('playwright.config.ts')), false);
+  for (const project of ['user', 'admin']) {
+    const discovery = spawnSync(process.execPath, [cli, 'test', '--project', project, '--grep', '@base', '--list', '--reporter=json'], { encoding: 'utf8' });
+    assert.equal(discovery.status, 0, discovery.stderr);
+    const tests = [];
+    const collect = suites => { for (const suite of suites) { for (const spec of suite.specs || []) { for (const test of spec.tests) tests.push({ id: spec.id, tags: spec.tags, projectName: test.projectName }); } collect(suite.suites || []); } };
+    collect(JSON.parse(discovery.stdout).suites);
+    assert.ok(tests.length > 1);
+    assert.equal(isFullBase(tests, resolve('playwright.config.ts')), true, project);
+    assert.equal(isFullBase(tests.slice(0, 1), resolve('playwright.config.ts')), false);
+  }
 });

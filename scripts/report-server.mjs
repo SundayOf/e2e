@@ -40,7 +40,18 @@ export function createReportServer({ root = resolve('reports/history') } = {}) {
       const host = request.headers.host;
       if (!host || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(`http://${host}`).hostname)) return json(403, { error: 'Недопустимый адрес сервера.' });
       const url = new URL(request.url, `http://${host}`);
-      if (url.pathname === '/api/state' && request.method === 'GET') return json(200, { ...historyState(root), token: sessionToken });
+      if (url.pathname === '/api/state' && request.method === 'GET') {
+        let state = historyState(root);
+        if (state.runs.some(run => run.status === 'running')) {
+          let release;
+          try { release = await acquireLock(root); } catch { /* The writer still owns the history. */ }
+          if (release) {
+            try { recoverRuns(root); state = historyState(root); }
+            finally { await release(); }
+          }
+        }
+        return json(200, { ...state, token: sessionToken });
+      }
       if (url.pathname.startsWith('/api/')) {
         if (request.method !== 'POST') return json(405, { error: 'Метод не поддерживается.' });
         if (request.headers.origin !== `http://${host}` || request.headers['x-report-token'] !== sessionToken || request.headers['content-type'] !== 'application/json') return json(403, { error: 'Запрос отклонён. Обновите страницу.' });
@@ -71,20 +82,31 @@ export function createReportServer({ root = resolve('reports/history') } = {}) {
       }
       if (!['GET', 'HEAD'].includes(request.method)) return json(405, { error: 'Метод не поддерживается.' });
       let file;
+      let rawAttachment = false;
       if (['/', '/index.html', '/app.css', '/app.js'].includes(url.pathname)) {
         file = join(root, url.pathname === '/' ? 'index.html' : url.pathname.slice(1));
       } else {
         const pathname = decodeURIComponent(url.pathname);
-        if (!/^\/runs\/\d{8}T\d{9}Z-[a-f0-9]{8}\/html\//.test(pathname)) return json(404, { error: 'Файл не найден.' });
-        file = resolve(root, `.${pathname}`);
-        inside(join(root, 'runs', pathname.split('/')[2], 'html'), file);
+        const attachmentRoute = pathname.match(/^\/runs\/(\d{8}T\d{9}Z-[a-f0-9]{8})\/attachments\/\d+\/\d+$/);
+        if (attachmentRoute) {
+          const run = historyState(root).runs.find(run => run.id === attachmentRoute[1]);
+          const attachment = run?.tests?.flatMap(test => test.attachments).find(attachment => attachment.url === pathname);
+          if (!attachment) return json(404, { error: 'Файл не найден.' });
+          file = resolve(root, 'runs', run.id, attachment.path);
+          inside(join(root, 'runs', run.id, 'results'), file);
+          rawAttachment = true;
+        } else {
+          if (!/^\/runs\/\d{8}T\d{9}Z-[a-f0-9]{8}\/html\//.test(pathname)) return json(404, { error: 'Файл не найден.' });
+          file = resolve(root, `.${pathname}`);
+          inside(join(root, 'runs', pathname.split('/')[2], 'html'), file);
+        }
       }
       inside(root, file);
       if (!existsSync(file) || !statSync(file).isFile()) return json(404, { error: 'Файл не найден.' });
       const headers = { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Content-Length': statSync(file).size, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
       const canonical = relative(root, file).split(sep).join('/');
-      if (/^runs\/[^/]+\/html\/(extra|data)\//i.test(canonical)) headers['Content-Security-Policy'] = 'sandbox';
-      if (/^runs\/[^/]+\/html\/extra\//i.test(canonical)) headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(file.split(/[\\/]/).at(-1)).replace(/'/g, '%27')}`;
+      if (rawAttachment || /^runs\/[^/]+\/html\/(extra|data)\//i.test(canonical)) headers['Content-Security-Policy'] = 'sandbox';
+      if (rawAttachment || /^runs\/[^/]+\/html\/extra\//i.test(canonical)) headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(file.split(/[\\/]/).at(-1)).replace(/'/g, '%27')}`;
       response.writeHead(200, headers);
       if (request.method === 'HEAD') response.end();
       else createReadStream(file).on('error', () => response.destroy()).pipe(response);

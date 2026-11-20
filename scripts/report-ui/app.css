@@ -243,6 +243,51 @@ a:hover {
   text-decoration: underline;
 }
 
+.result-link {
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  text-align: left;
+}
+
+.result-link:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.details-body .test-results {
+  list-style: none;
+  padding: 0;
+}
+
+.test-results > li {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.test-heading {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.test-status {
+  flex: 0 0 110px;
+  font-size: 12px;
+}
+
+.notRun {
+  color: var(--muted);
+}
+
+.test-error {
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: var(--red);
+}
+
 .run-meta {
   flex-wrap: wrap;
   color: var(--muted);

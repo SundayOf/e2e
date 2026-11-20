@@ -4,7 +4,6 @@
   "scripts": {
     "test": "playwright test --grep @base --headed --workers=1",
     "test:admin": "playwright test --project admin --headed --workers=1",
-    "test:user": "playwright test --project user --headed --workers=1",
     "test:permissions": "playwright test --config playwright.permissions.config.ts --headed --workers=1",
     "test:tree": "node scripts/test-tree.mjs",
     "report": "node scripts/report-server.mjs",

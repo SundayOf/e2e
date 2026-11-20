@@ -1,5 +1,5 @@
 import { expect, test } from './helpers/test';
-import { getTestGroup, openMyProfile, openTestUserForm, readEditRights, restoreTestUserProfile, saveMyProfileName, setTestGroup } from './helpers/access';
+import { getTestGroup, openMyProfile, openTestUserForm, readEditRights, restoreTestUserProfile, saveMyProfileName, saveTestUserForm, setTestGroup } from './helpers/access';
 import { openProject, projectName, signIn, signInAsAdmin, signOut } from './helpers/scada';
 import { replayUiPost } from './helpers/security';
 
@@ -11,7 +11,7 @@ for (const field of [
     test.setTimeout(90_000);
     let role: 'admin' | 'operator' | 'none' = 'none';
     let initialGroup: boolean | undefined;
-    let original: { name: string; rights: Record<string, boolean> } | undefined;
+    let original: { name: string; rights: Record<string, boolean>; profileEditable: boolean } | undefined;
     const marker = 'Проверка профиля';
     onCleanup(async () => {
       for (const selector of ['#form_edit_my_data', '#form_edit_user']) {
@@ -41,7 +41,16 @@ for (const field of [
     expect(Object.keys(rights)).toContain(field.id);
     expect(Object.values(rights).every(value => !value), 'Личные права исходной роли должны быть выключены').toBe(true);
     expect(name).not.toBe(marker);
-    original = { name, rights };
+    const profileEditable = await form.locator('#enable_edit').isChecked();
+    original = { name, rights, profileEditable };
+    if (!profileEditable) {
+      await form.locator('#enable_edit').locator('..').locator('span').click();
+      await expect(form.locator('#enable_edit')).toBeChecked();
+      await saveTestUserForm(page);
+      await openTestUserForm(page);
+    }
+    await expect(form.locator('#enable_edit')).toBeChecked();
+    expect(await readEditRights(form)).toEqual(rights);
     await form.locator('#form_cancel').click();
     await setTestGroup(page, false);
     expect(await getTestGroup(page)).toBe(false);

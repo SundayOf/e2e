@@ -1,7 +1,0 @@
-node_modules
-reports
-allure-results
-test-results
-.git
-.env
-.npm-tmp/

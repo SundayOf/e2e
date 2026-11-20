@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { inside } from './report-history.mjs';
+import { createReportServer } from './report-server.mjs';
+import { setTimeout } from 'node:timers/promises';
 
-test('Three headed runs preserve history, failure traces and files without duplicate results', t => {
+function fixture(t) {
   mkdirSync('reports', { recursive: true });
   const directory = mkdtempSync(resolve('reports/html-history-check-'));
   t.after(() => {
@@ -23,12 +25,18 @@ test('Three headed runs preserve history, failure traces and files without dupli
     const reportHistory = { ...base.metadata.reportHistory, root,
       runDir: join(root, 'runs', basename(base.metadata.reportHistory.runDir)) };
     export default { ...base, testDir: ${JSON.stringify(directory)}, testMatch: 'probe.spec.ts',
+      projects: [{ name: 'probe' }],
       metadata: { reportHistory }, outputDir: join(reportHistory.runDir, 'results'),
       reporter: process.argv.includes('--list') ? [['list']] : [
         ['list'], ['html', { outputFolder: join(reportHistory.runDir, 'html'), open: 'never' }],
         [${JSON.stringify(resolve('scripts/report-history.mjs'))}, reportHistory],
       ], retries: 0, workers: 1, timeout: 10000 };
   `);
+  return { directory, historyRoot, history, config };
+}
+
+test('Three headed runs preserve history, failure traces and files without duplicate results', t => {
+  const { directory, historyRoot, history, config } = fixture(t);
   writeFileSync(join(directory, 'probe.spec.ts'), `
     import { test, expect } from '@playwright/test';
     import { writeFileSync } from 'node:fs';
@@ -78,4 +86,75 @@ test('Three headed runs preserve history, failure traces and files without dupli
   assert.ok(existsSync(join(history, created[1], 'html', 'trace')));
   assert.equal(existsSync(join(historyRoot, '.active.json')), false);
   console.log(`Verified history runs: ${created.join(', ')}`);
+});
+
+test('A killed Playwright run keeps completed tests, pending tests and downloadable attachments', async t => {
+  const { directory, historyRoot, history, config } = fixture(t);
+  writeFileSync(join(directory, 'probe.spec.ts'), `
+    import { test, expect } from '@playwright/test';
+    import { writeFileSync } from 'node:fs';
+    test('Completed before interruption', async ({ page }, info) => {
+      await page.setContent('<h1>Local page</h1>');
+      await expect(page.getByRole('heading')).toHaveText('Local page');
+      const path = info.outputPath('результат.txt');
+      writeFileSync(path, 'Saved before interruption');
+      await info.attach('Saved result', { path, contentType: 'text/plain' });
+    });
+    test('Interrupted while running', async ({ page }) => {
+      await page.setContent('<h1>Waiting</h1>');
+      await new Promise(() => {});
+    });
+    test('Never started', async () => {});
+  `);
+  const cli = createRequire(import.meta.url).resolve('@playwright/test/cli');
+  const env = { ...process.env };
+  delete env._SCADA_REPORT_RUN_ID;
+  delete env.npm_lifecycle_event;
+  const child = spawn(process.execPath, [cli, 'test', '--config', config, '--headed', '--workers=1'], { env });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = new Promise((accept, reject) => { child.once('exit', accept); child.once('error', reject); });
+  const stop = () => {
+    if (process.platform === 'win32') {
+      const killed = spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { encoding: 'utf8', windowsHide: true });
+      assert.equal(killed.status, 0, killed.stderr || killed.stdout);
+    } else child.kill('SIGKILL');
+  };
+  try {
+    let id;
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
+      if (existsSync(history)) {
+        id = readdirSync(history)[0];
+        const manifest = id && join(history, id, 'run.json');
+        if (manifest && existsSync(manifest)) {
+          const data = JSON.parse(readFileSync(manifest, 'utf8'));
+          if (data.tests?.[0]?.status === 'passed' && data.tests?.[1]?.status === 'running') break;
+        }
+      }
+      await setTimeout(100);
+    }
+    assert.ok(id, output);
+    const before = JSON.parse(readFileSync(join(history, id, 'run.json'), 'utf8'));
+    assert.deepEqual(before.tests?.map(test => test.status), ['passed', 'running', 'notRun'], output);
+    stop();
+    await exited;
+    const server = createReportServer({ root: historyRoot });
+    await new Promise(accept => server.listen(0, '127.0.0.1', accept));
+    try {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const state = await (await fetch(`${base}/api/state`)).json();
+      const run = state.runs[0];
+      assert.equal(run.status, 'interrupted');
+      assert.equal(run.reportUrl, null);
+      assert.deepEqual(run.tests.map(test => test.status), ['passed', 'interrupted', 'notRun']);
+      const attachment = run.tests[0].attachments[0];
+      assert.ok(attachment?.url);
+      assert.equal(await (await fetch(`${base}${attachment.url}`)).text(), 'Saved before interruption');
+      console.log('Verified forced termination after one completed test; saved attachment remains available.');
+    } finally { await new Promise(accept => server.close(accept)); }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) { stop(); await exited; }
+  }
 });

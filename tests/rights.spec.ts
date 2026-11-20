@@ -6,7 +6,7 @@ import {
   openDeviceTags, openDeviceTree, openProject, projectName, setTagValue, signIn, signInAsAdmin, signOut,
 } from './helpers/scada';
 import { openViewList } from './helpers/view';
-import { allowTagGroupWrite, expectTagAcl, openTestUsers as openUsers, setTestGroup as setGroup, testUserRow as userRow } from './helpers/access';
+import { allowTagGroupWrite, expectTagAcl, getTestGroup, openTestUsers as openUsers, setTestGroup as setGroup, testUserRow as userRow } from './helpers/access';
 
 async function closeRightsForms(page: Page) {
   if (await page.locator('#div_msg .msg_close').isVisible()) await page.locator('#div_msg .msg_close').click();
@@ -65,31 +65,29 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Сохранение членства в группе', { tag: ['@access', '@rights', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
-  const initiallyEnabled = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
+  const initiallyEnabled = await getTestGroup(page);
   onCleanup(async () => {
     if (info.status !== info.expectedStatus) await page.screenshot({ path: info.outputPath('Rights before cleanup.png'), timeout: 3000 }).catch(() => {});
     await closeRightsForms(page);
     await openUsers(page);
     await setGroup(page, initiallyEnabled);
     await openUsers(page);
-    await expect(userRow(page).locator('td.group')).toHaveText(initiallyEnabled ? '1' : '');
+    expect(await getTestGroup(page)).toBe(initiallyEnabled);
   });
   await setGroup(page, !initiallyEnabled);
   await openUsers(page);
-  await expect(userRow(page).locator('td.group')).toHaveText(initiallyEnabled ? '' : '1');
+  expect(await getTestGroup(page)).toBe(!initiallyEnabled);
 });
 
 test('Сохранение выбранных прав', { tag: ['@access', '@rights', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
-  const initiallyEnabled = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
+  const initiallyEnabled = await getTestGroup(page);
   onCleanup(async () => {
     if (info.status !== info.expectedStatus) await page.screenshot({ path: info.outputPath('Rights before cleanup.png'), timeout: 3000 }).catch(() => {});
     await closeRightsForms(page);
     await openUsers(page);
-    if ((await userRow(page).locator('td.group').textContent())?.trim() !== (initiallyEnabled ? '1' : '')) {
-      await setGroup(page, initiallyEnabled);
-    }
+    await setGroup(page, initiallyEnabled);
     await openUsers(page);
-    await expect(userRow(page).locator('td.group')).toHaveText(initiallyEnabled ? '1' : '');
+    expect(await getTestGroup(page)).toBe(initiallyEnabled);
   });
   await setGroup(page, !initiallyEnabled);
   await setGroup(page, initiallyEnabled);
@@ -103,7 +101,7 @@ test('Запись тега по праву группы', { tag: ['@access', '@
   test.setTimeout(60_000);
   const deviceName = 'GroupAccessDevice';
   const tagName = 'GroupValue';
-  const initialGroup = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
+  const initialGroup = await getTestGroup(page);
   let deviceId = '';
   let role: 'test' | 'autotest' | 'none' = 'test';
   onCleanup(async () => {
@@ -120,7 +118,7 @@ test('Запись тега по праву группы', { tag: ['@access', '@
     await openUsers(page);
     await setGroup(page, initialGroup);
     await openUsers(page);
-    await expect(userRow(page).locator('td.group')).toHaveText(initialGroup ? '1' : '');
+    expect(await getTestGroup(page)).toBe(initialGroup);
   });
   await setGroup(page, true);
   await openProject(page, projectName);
@@ -153,7 +151,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
   test.setTimeout(60_000);
   const deviceName = 'RestrictedAccessDevice';
   const tagName = 'RestrictedValue';
-  const initialGroup = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
+  const initialGroup = await getTestGroup(page);
   let deviceId = '';
   let role: 'test' | 'autotest' | 'none' = 'test';
   onCleanup(async () => {
@@ -171,7 +169,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
     await openUsers(page);
     await setGroup(page, initialGroup);
     await openUsers(page);
-    await expect(userRow(page).locator('td.group')).toHaveText(initialGroup ? '1' : '');
+    expect(await getTestGroup(page)).toBe(initialGroup);
   });
   await setGroup(page, true);
   await openProject(page, projectName);
@@ -226,7 +224,7 @@ test('Запрет записи тега без права', { tag: ['@access', 
 
 test('Доступ к картам по праву группы', { tag: ['@access', '@rights', '@map', '@g09', '@mixed', '@permissions'] }, async ({ page, onCleanup }, info) => {
   test.setTimeout(90_000);
-  const initialGroup = (await userRow(page).locator('td.group').textContent())?.trim() === '1';
+  const initialGroup = await getTestGroup(page);
   let role: 'test' | 'autotest' | 'none' = 'test';
   onCleanup(async () => {
     if (info.status !== info.expectedStatus) await page.screenshot({ path: info.outputPath('Rights before cleanup.png'), timeout: 3000 }).catch(() => {});
@@ -241,7 +239,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
     await openUsers(page);
     await setGroup(page, initialGroup);
     await openUsers(page);
-    await expect(userRow(page).locator('td.group')).toHaveText(initialGroup ? '1' : '');
+    expect(await getTestGroup(page)).toBe(initialGroup);
   });
   await userRow(page).locator('td.edit').click();
   const userForm = page.locator('#form_edit_user');
@@ -270,7 +268,7 @@ test('Доступ к картам по праву группы', { tag: ['@acce
   await openUsers(page);
   await setGroup(page, false);
   await openUsers(page);
-  await expect(userRow(page).locator('td.group')).toHaveText('');
+  expect(await getTestGroup(page)).toBe(false);
 
   await signOut(page);
   role = 'none';

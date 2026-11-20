@@ -79,3 +79,39 @@ test('The server serves reports and downloads without exposing internal paths', 
   assert.equal((await fetch(`${base}/settings.json`)).status, 404);
   assert.equal((await fetch(`${base}/runs/${run.id}/html/..%2f..%2f..%2fsettings.json`)).status, 400);
 });
+
+test('The API recovers interrupted results and serves only registered local attachments', async t => {
+  const { root, base } = await fixture(t);
+  const run = seed(root, 1);
+  writeFileSync(join(run.dir, 'html', 'index.html'), 'Incomplete report');
+  mkdirSync(join(run.dir, 'results'));
+  writeFileSync(join(run.dir, 'results', 'screen.png'), 'image');
+  writeFileSync(join(run.dir, 'results', 'private.txt'), 'unregistered');
+  writeFileSync(join(run.dir, 'run.json'), JSON.stringify({
+    managedBy: 'scada-playwright-html-v1', id: run.id, started: 1, status: 'running',
+    tests: [
+      { id: 'one', title: 'Готово', status: 'passed', attachments: [{ name: 'Screen', path: 'results/screen.png' }, { name: 'Outside', path: '../../settings.json' }] },
+      { id: 'two', title: 'Прервано', status: 'running', attachments: [] },
+      { id: 'three', title: 'Не запускалось', status: 'notRun', attachments: [] },
+    ],
+  }));
+  const release = await acquireLock(root);
+  try {
+    const active = await (await fetch(`${base}/api/state`)).json();
+    assert.equal(active.runs[0].status, 'running');
+  } finally { await release(); }
+  const recovered = await (await fetch(`${base}/api/state`)).json();
+  const result = recovered.runs[0];
+  assert.equal(result.status, 'interrupted');
+  assert.equal(result.reportUrl, null);
+  assert.deepEqual(result.tests.map(test => test.status), ['passed', 'interrupted', 'notRun']);
+  assert.equal(result.tests[0].attachments.length, 1);
+  const download = await fetch(`${base}${result.tests[0].attachments[0].url}`);
+  assert.equal(download.status, 200);
+  assert.equal(await download.text(), 'image');
+  assert.equal(download.headers.get('content-security-policy'), 'sandbox');
+  assert.match(download.headers.get('content-disposition'), /^attachment;/);
+  assert.equal((await fetch(`${base}/runs/${run.id}/results/private.txt`)).status, 404);
+  assert.equal((await fetch(`${base}/runs/${run.id}/attachments/0/1`)).status, 404);
+  assert.equal((await fetch(`${base}/runs/${run.id}/attachments/999/0`)).status, 404);
+});

@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
+import { stripVTControlCharacters } from 'node:util';
 
 const require = createRequire(import.meta.url);
 const { yauzl } = require('playwright-core/lib/utilsBundle');
@@ -80,6 +81,10 @@ function runs(root) {
       if (data.managedBy !== marker || data.id !== entry.name || !Number.isFinite(data.started)) continue;
       if (data.selection !== undefined && (!Array.isArray(data.selection) || data.selection.some(title => typeof title !== 'string'))) continue;
       if (data.name !== undefined && typeof data.name !== 'string') continue;
+      if (data.tests !== undefined && (!Array.isArray(data.tests) || data.tests.some(test =>
+        !test || typeof test.id !== 'string' || typeof test.title !== 'string' || typeof test.status !== 'string' ||
+        !Array.isArray(test.attachments) || test.attachments.some(attachment => typeof attachment?.name !== 'string' || typeof attachment.path !== 'string') ||
+        (test.errors !== undefined && (!Array.isArray(test.errors) || test.errors.some(error => typeof error !== 'string')))))) continue;
       result.push({ ...data, dir, pinned: existsSync(join(dir, '.keep')) });
     } catch { /* Unknown/damaged metadata is never a deletion target. */ }
   }
@@ -128,7 +133,8 @@ export function recoverRuns(root) {
   for (const item of runs(root)) {
     if (item.status !== 'running') continue;
     const { dir, pinned, ...data } = item;
-    save(join(dir, 'run.json'), { ...data, status: 'interrupted', ended: Date.now() });
+    save(join(dir, 'run.json'), { ...data, status: 'interrupted', ended: Date.now(), reportReady: false,
+      ...(data.tests ? { tests: data.tests.map(test => test.status === 'running' ? { ...test, status: 'interrupted' } : test) } : {}) });
   }
 }
 
@@ -268,8 +274,18 @@ export function historyState(root) {
         downloads.push({ name, bytes: lstatSync(file).size, url: `/runs/${item.id}/html/extra/${name.split('/').map(encodeURIComponent).join('/')}` });
       }
     } catch { unreadable = true; }
+    const tests = item.tests?.map((test, testIndex) => ({ ...test,
+      attachments: (test.attachments || []).flatMap((attachment, index) => {
+        try {
+          const file = resolve(item.dir, attachment.path);
+          inside(join(item.dir, 'results'), file);
+          if (!existsSync(file) || !lstatSync(file).isFile()) return [];
+          return [{ ...attachment, url: `/runs/${item.id}/attachments/${testIndex}/${index}` }];
+        } catch { return []; }
+      }),
+    }));
     const { dir, ...data } = item;
-    return { ...data, bytes, unreadable, downloads, reportUrl: existsSync(join(item.dir, 'html', 'index.html')) ? `/runs/${item.id}/html/index.html` : null };
+    return { ...data, tests, bytes, unreadable, downloads, reportUrl: item.status !== 'running' && item.reportReady !== false && existsSync(join(item.dir, 'html', 'index.html')) ? `/runs/${item.id}/html/index.html` : null };
   });
   const savedBytes = history.filter(item => item.status !== 'running').reduce((sum, item) => sum + item.bytes, 0);
   const temporaryBytes = history.filter(item => item.status === 'running').reduce((sum, item) => sum + item.bytes, 0);
@@ -310,7 +326,8 @@ export async function startRun(options) {
 export function isFullBase(tests, configFile) {
   tests = tests.filter(t => !t.tags.some(tag => tag.replace(/^@/, '') === 'bootstrap'));
   if (!tests.length || tests.some(t => !t.tags.some(tag => tag.replace(/^@/, '') === 'base'))) return false;
-  const discovery = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', configFile, '--grep', '@base', '--list', '--reporter=json'], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2 });
+  const projects = [...new Set(tests.map(t => t.parent?.project?.()?.name || t.projectName).filter(Boolean))];
+  const discovery = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', configFile, ...(projects.length ? ['--project', ...projects] : []), '--grep', '@base', '--list', '--reporter=json'], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 ** 2 });
   if (discovery.status !== 0) throw new Error('Cannot classify full-base report: test discovery failed.');
   const ids = [];
   const collect = suites => { for (const suite of suites) { for (const spec of suite.specs || []) { if (spec.tags?.some(tag => tag.replace(/^@/, '') === 'base')) for (const item of spec.tests) ids.push(spec.id); } collect(suite.suites || []); } };
@@ -346,7 +363,7 @@ export function setPinned(root, id, pinned) {
 }
 
 export default class HistoryReporter {
-  constructor(options) { this.options = options; this.attachments = []; this.skipped = 0; }
+  constructor(options) { this.options = options; this.attachments = []; this.skipped = 0; this.tests = []; }
   version() { return 'v2'; }
   onConfigure(config) { this.output = config.projects[0].outputDir; this.configFile = config.configFile; }
   onBegin(suite) {
@@ -355,26 +372,53 @@ export default class HistoryReporter {
     this.selection = tests.map(t => t.title);
     this.kind = isFullBase(tests, this.configFile) ? 'base' : 'selection';
     this.name = runName(tests, this.kind);
+    this.tests = tests.map(test => ({ id: test.id, title: test.title, project: test.parent.project()?.name || '', status: 'notRun', attachments: [] }));
     const manifest = join(this.options.runDir, 'run.json');
     if (existsSync(manifest)) {
       const data = JSON.parse(readFileSync(manifest, 'utf8'));
-      save(manifest, { ...data, name: this.name, kind: this.kind, total: this.total, selection: this.selection });
+      save(manifest, { ...data, name: this.name, kind: this.kind, total: this.total, selection: this.selection, tests: this.tests });
     }
+  }
+  saveProgress() {
+    const manifest = join(this.options.runDir, 'run.json');
+    const data = JSON.parse(readFileSync(manifest, 'utf8'));
+    save(manifest, { ...data, tests: this.tests });
+  }
+  onTestBegin(test, result) {
+    const entry = this.tests.find(item => item.id === test.id);
+    if (!entry) return;
+    Object.assign(entry, { status: 'running', retry: result.retry, duration: 0, errors: [], attachments: [] });
+    this.saveProgress();
   }
   onTestEnd(test, result) {
     this.attachments.push(...result.attachments.filter(a => a.path).map(a => a.path));
     if (result.status === 'skipped') this.skipped++;
+    const entry = this.tests.find(item => item.id === test.id);
+    if (!entry) return;
+    const attachments = result.attachments.flatMap(attachment => {
+      if (!attachment.path) return [];
+      const file = resolve(attachment.path);
+      try { inside(join(this.options.runDir, 'results'), file); }
+      catch { return []; }
+      return [{ name: attachment.name, path: relative(this.options.runDir, file).split(sep).join('/') }];
+    });
+    const status = result.status === 'failed' && test.expectedStatus === 'failed' ? 'passed'
+      : result.status === 'passed' && test.expectedStatus === 'failed' ? 'failed' : result.status.toLowerCase();
+    Object.assign(entry, { status, retry: result.retry, duration: result.duration, errors: (result.errors || []).map(error => stripVTControlCharacters(error.message || error.value || 'Ошибка')), attachments });
+    this.saveProgress();
   }
   onEnd(result) {
     this.status = result.status === 'passed' && this.total > 0 && this.skipped === this.total ? 'skipped' : result.status;
+    for (const entry of this.tests) if (entry.status === 'running') entry.status = 'interrupted';
+    if (this.tests.length) this.saveProgress();
   }
   async onExit() {
     const { root, runDir } = this.options;
     const manifest = join(runDir, 'run.json');
     if (!existsSync(manifest)) return;
     const data = JSON.parse(readFileSync(manifest, 'utf8'));
-    try { await archiveResults(runDir, this.output, this.attachments); }
-    catch (error) { data.archiveError = error.message; console.error(`[reports] ${error.message}`); }
+    try { await archiveResults(runDir, this.output, this.attachments); data.reportReady = true; }
+    catch (error) { data.reportReady = false; data.archiveError = error.message; console.error(`[reports] ${error.message}`); }
     save(manifest, { ...data, status: this.status || 'interrupted', ended: Date.now(), total: this.total, kind: this.kind || 'selection', name: this.name, selection: this.selection });
     const result = getSettings(root).autoCleanup ? pruneHistory(root) : { removed: [], bytes: historyState(root).bytes };
     console.log(`[reports] ${relative(process.cwd(), runDir)}; removed=${result.removed.length}; ${(result.bytes / 1024 ** 2).toFixed(1)} MiB${result.overBudget ? ' — protected data exceeds budget' : ''}`);

@@ -35,7 +35,7 @@ export async function saveTestUserForm(page: Page) {
   await expect(form).toBeHidden();
 }
 
-export async function restoreTestUserProfile(page: Page, original: { name: string; rights: Record<string, boolean> }) {
+export async function restoreTestUserProfile(page: Page, original: { name: string; rights: Record<string, boolean>; profileEditable?: boolean }) {
   const form = await openTestUserForm(page);
   const set = async (key: string, checked: boolean) => {
     const input = form.locator(`#${key}`);
@@ -50,11 +50,13 @@ export async function restoreTestUserProfile(page: Page, original: { name: strin
   }
   await set('enable_edit_devices', original.rights.enable_edit_devices);
   await set('enable_edit_config', original.rights.enable_edit_config);
+  if (original.profileEditable !== undefined) await set('enable_edit', original.profileEditable);
   await form.locator('#name').fill(original.name);
   await saveTestUserForm(page);
   await openTestUserForm(page);
   await expect(form.locator('#name')).toHaveValue(original.name);
   expect(await readEditRights(form)).toEqual(original.rights);
+  if (original.profileEditable !== undefined) await expect(form.locator('#enable_edit')).toBeChecked({ checked: original.profileEditable });
   await form.locator('#form_cancel').click();
 }
 
@@ -108,13 +110,16 @@ export async function setTestGroup(page: Page, enabled: boolean) {
     await form.locator('#form_cancel').click();
     return;
   }
+  const count = Number((await testUserRow(page).locator('td.group').textContent())?.trim() || '0');
+  expect(Number.isSafeInteger(count) && count >= (enabled ? 0 : 1), 'Количество групп пользователя').toBe(true);
   await group.click();
   const saved = page.waitForResponse(r => new URL(r.url()).pathname.startsWith('/save_user_on_groups/') && r.ok(), { timeout: 10_000 });
   await form.locator('#form_ok').click();
   expect((await (await saved).json()).error).toBeFalsy();
   // Не перезагружаем список: G02 сравнивает результат POST с последующим GET.
   await expect(form).toBeHidden();
-  await expect(testUserRow(page).locator('td.group')).toHaveText(enabled ? '1' : '');
+  const expected = count + (enabled ? 1 : -1);
+  await expect(testUserRow(page).locator('td.group')).toHaveText(expected ? String(expected) : '');
 }
 
 async function openTagAcl(page: Page, tag: Locator, kind: 'user' | 'group') {

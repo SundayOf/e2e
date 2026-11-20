@@ -1,5 +1,5 @@
 const $ = selector => document.querySelector(selector);
-const labels = { passed: 'Пройден', failed: 'Ошибка', timedout: 'Таймаут', interrupted: 'Прерван', running: 'Выполняется', skipped: 'Пропущен' };
+const labels = { passed: 'Пройден', failed: 'Ошибка', timedout: 'Таймаут', interrupted: 'Прерван', running: 'Выполняется', skipped: 'Пропущен', notRun: 'Не запускался' };
 const filters = [
   ['all', 'Все', () => true],
   ['passed', 'Успешные', run => run.status === 'passed'],
@@ -140,7 +140,8 @@ function runCard(run) {
   icon.title = labels[run.status] || run.status;
   const main = element('div', undefined, 'run-main');
   const title = runTitle(run);
-  const name = element(run.reportUrl ? 'a' : 'span', title, 'run-title');
+  const partial = !run.reportUrl && run.tests?.length;
+  const name = element(run.reportUrl ? 'a' : partial ? 'button' : 'span', title, partial ? 'run-title result-link' : 'run-title');
   if (run.reportUrl) name.href = run.reportUrl;
   name.dataset.focus = `${run.id}-open`;
   const meta = element('div', undefined, 'run-meta');
@@ -148,6 +149,7 @@ function runCard(run) {
     if (text) meta.append(element('span', text));
   }
   if (run.pinned) meta.append(element('span', 'Закреплён', 'pinned'));
+  if (partial) meta.append(element('span', `Завершено: ${run.tests.filter(test => ['passed', 'failed', 'timedout', 'skipped'].includes(test.status)).length} из ${run.tests.length}`));
   main.append(name, meta);
   const actions = element('div', undefined, 'run-actions');
   const pin = button(run.pinned ? 'Открепить' : 'Закрепить', async () => {
@@ -163,7 +165,8 @@ function runCard(run) {
   actions.append(remove);
   header.append(icon, main, actions);
   const details = element('details');
-  const summary = element('summary', 'Сведения');
+  const summary = element('summary', partial ? 'Результаты' : 'Сведения');
+  if (partial) name.addEventListener('click', () => { details.open = true; });
   summary.dataset.focus = `${run.id}-details`;
   details.append(summary);
   const content = element('div', undefined, 'details-body');
@@ -171,7 +174,27 @@ function runCard(run) {
   if (run.revision) content.append(element('p', `Версия: ${run.revision}`));
   if (run.archiveError) content.append(element('p', `Архивирование: ${run.archiveError}`, 'failed'));
   if (run.unreadable) content.append(element('p', 'Часть файлов недоступна. Автоочистка этот прогон не удалит.', 'failed'));
-  if (run.selection?.length && (run.selection.length > 1 || run.selection[0] !== title)) {
+  if (partial) {
+    const list = element('ul', undefined, 'test-results');
+    for (const test of run.tests) {
+      const row = element('li');
+      const heading = element('div', undefined, 'test-heading');
+      heading.append(element('span', labels[test.status] || test.status, `test-status ${test.status}`), element('span', test.title));
+      row.append(heading);
+      const meta = [test.project, test.duration === undefined ? null : `${(test.duration / 1000).toFixed(1)} с`, test.retry ? `Повтор: ${test.retry}` : null].filter(Boolean);
+      if (meta.length) row.append(element('div', meta.join(' · '), 'run-meta'));
+      for (const error of test.errors || []) row.append(element('pre', error, 'test-error'));
+      for (const attachment of test.attachments) {
+        const link = element('a', attachment.name);
+        link.href = attachment.url;
+        const file = element('div');
+        file.append(link);
+        row.append(file);
+      }
+      list.append(row);
+    }
+    content.append(list);
+  } else if (run.selection?.length && (run.selection.length > 1 || run.selection[0] !== title)) {
     const list = element('ul');
     for (const title of run.selection) list.append(element('li', title));
     content.append(list);

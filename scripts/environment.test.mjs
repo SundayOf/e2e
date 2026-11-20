@@ -22,9 +22,13 @@ function discover(...args) {
 
 test('File tests run without environment setup or teardown', () => {
   const tests = discover('tests/files.spec.ts');
-  assert.equal(tests.filter(test => test.project === 'admin').length, 2);
+  assert.equal(tests.filter(test => test.project === 'admin').length, 0);
   assert.equal(tests.filter(test => test.project === 'user').length, 2);
-  assert.equal(tests.length, 4);
+  assert.equal(tests.length, 2);
+  const admin = discover('tests/files.spec.ts', '--project', 'admin');
+  assert.equal(admin.length, 2);
+  assert.ok(admin.every(test => test.project === 'admin'));
+  assert.equal(discover('tests/files.spec.ts', '--project', 'admin', 'user').length, 4);
 });
 
 test('Permission changes require an explicit separate run', () => {
