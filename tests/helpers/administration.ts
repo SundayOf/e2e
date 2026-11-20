@@ -1,11 +1,13 @@
 ﻿import type { Locator, Page } from '@playwright/test';
+import { resolve } from 'node:path';
 import { expect } from './test';
 import { bootstrapData, administrationData as data } from './bootstrap-data';
-import { requireOwned, saveOwned } from './owned';
+import { rememberCreated, requireOwned, saveOwned } from './owned';
+import { AdministrationJournal, type AdministrationIds } from './administration-journal';
 import { openProject, signIn, signInAsAdmin, signOut, waitForIdle } from './scada';
 
 type Kind = 'project' | 'user' | 'group';
-export type AdministrationState = { ids: Record<Kind, string> };
+export type AdministrationState = { ids: AdministrationIds; journal: AdministrationJournal };
 const lists = {
   project: { title: 'Проекты', path: '/edit_projects/', name: data.project, key: 'project_id', save: '/save_project//', remove: '/delete_project/' },
   user: { title: 'Пользователи', path: '/edit_users/', name: data.login, key: 'user_id', save: '/save_user//', remove: '/delete_user/' },
@@ -18,7 +20,17 @@ export function newAdministrationState(): AdministrationState {
   for (const login of [bootstrapData.admin.login, bootstrapData.login]) {
     expect(data.login.toLowerCase(), 'Временный пользователь должен отличаться от подготовленных').not.toBe(login.toLowerCase());
   }
-  return { ids: { project: '', user: '', group: '' } };
+  return { ids: { project: '', user: '', group: '' },
+    journal: new AdministrationJournal(resolve('reports/state'), { baseURL: bootstrapData.baseURL, admin: bootstrapData.admin.login }) };
+}
+
+export async function recoverAdministration(page: Page, state: AdministrationState) {
+  const ids = state.journal.read();
+  if (!Object.values(ids).some(Boolean)) return;
+  state.ids = ids;
+  for (const id of Object.values(ids)) if (id) rememberCreated(page, id);
+  await cleanupAdministration(page, state);
+  await signOut(page);
 }
 
 async function list(page: Page, kind: Kind) {
@@ -30,7 +42,8 @@ async function list(page: Page, kind: Kind) {
   await waitForIdle(page);
 }
 
-async function add(page: Page, kind: Kind) {
+async function add(page: Page, state: AdministrationState, kind: Kind) {
+  expect(state.journal.read(), 'Сначала очистите записанные остатки предыдущего теста').toEqual(state.ids);
   await list(page, kind);
   const occupied = kind === 'user'
     ? page.locator(`#table_option tr[fl="${data.login}"]`)
@@ -41,13 +54,14 @@ async function add(page: Page, kind: Kind) {
 
 async function create(page: Page, state: AdministrationState, kind: Kind, form: Locator) {
   state.ids[kind] = await saveOwned(page, lists[kind].save, lists[kind].key, () => form.locator('#form_ok').click());
+  state.journal.write(state.ids);
   await expect(form).toBeHidden();
   await list(page, kind);
   return page.locator(`#table_option tr[rec_id="${state.ids[kind]}"]`);
 }
 
 export async function createProject(page: Page, state: AdministrationState) {
-  await add(page, 'project');
+  await add(page, state, 'project');
   const form = page.locator('#form_edit_project');
   await form.locator('#name').fill(data.project);
   const row = await create(page, state, 'project', form);
@@ -56,7 +70,7 @@ export async function createProject(page: Page, state: AdministrationState) {
 }
 
 export async function createUserGroup(page: Page, state: AdministrationState) {
-  await add(page, 'group');
+  await add(page, state, 'group');
   const form = page.locator('#form_edit_group_users');
   await form.locator('#name').fill(data.group);
   const rights = await form.locator('input[id^="enable_edit_"]').evaluateAll(nodes => nodes.map(node => node.id));
@@ -92,7 +106,7 @@ async function projectAccess(page: Page, state: AdministrationState, kind: 'user
 
 export async function createUser(page: Page, state: AdministrationState) {
   expect(data.password, 'Задайте PASSWORD в .env для временного пользователя').not.toBe('');
-  await add(page, 'user');
+  await add(page, state, 'user');
   const form = page.locator('#form_edit_user');
   await form.locator('#login').fill(data.login);
   await form.locator('#name').fill(data.name);
@@ -143,35 +157,32 @@ export async function cleanupAdministration(page: Page, state: AdministrationSta
   await page.goto('/');
   if (await page.locator('#logout').isVisible()) await signOut(page);
   await signInAsAdmin(page);
-  const errors: unknown[] = [];
   for (const kind of ['user', 'group', 'project'] as const) {
     const id = state.ids[kind];
     if (!id) continue;
-    try {
-      await list(page, kind);
-      const row = page.locator(`#table_option tr[rec_id="${id}"]`);
-      if (await row.count()) {
-        await requireOwned(page, row);
-        if (kind === 'project') {
-          await page.goto('/');
-          await list(page, kind);
-          await expect(row).toHaveCount(1);
-        }
-        const response = await page.request.post(lists[kind].remove, {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          data: JSON.stringify({ ids: [id] }),
-        });
-        expect(response.ok()).toBe(true);
-        const result = await response.json();
-        expect(result.error, `Удаление: ${lists[kind].title}`).toBeFalsy();
-        expect(result.ids.map(String)).toEqual([id]);
+    await list(page, kind);
+    const row = page.locator(`#table_option tr[rec_id="${id}"]`);
+    if (await row.count()) {
+      await requireOwned(page, row);
+      if (kind === 'user') await expect(row).toHaveAttribute('fl', data.login);
+      else await expect(row.getByRole('cell', { name: lists[kind].name, exact: true })).toHaveCount(1);
+      if (kind === 'project') {
+        await page.goto('/');
+        await list(page, kind);
+        await expect(row).toHaveCount(1);
       }
-      await list(page, kind);
-      await expect(row).toHaveCount(0);
-      state.ids[kind] = '';
-    } catch (error) {
-      errors.push(error);
+      const response = await page.request.post(lists[kind].remove, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        data: JSON.stringify({ ids: [id] }),
+      });
+      expect(response.ok()).toBe(true);
+      const result = await response.json();
+      expect(result.error, `Удаление: ${lists[kind].title}`).toBeFalsy();
+      expect(result.ids.map(String)).toEqual([id]);
     }
+    await list(page, kind);
+    await expect(row).toHaveCount(0);
+    state.ids[kind] = '';
+    state.journal.write(state.ids);
   }
-  if (errors.length) throw new AggregateError(errors, 'Не удалось очистить временные объекты');
 }

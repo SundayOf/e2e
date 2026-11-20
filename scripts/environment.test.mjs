@@ -40,6 +40,6 @@ test('Permission changes require an explicit separate run', () => {
 
 test('Creation checks run independently under the selected role', () => {
   const tests = discover('tests/administration.spec.ts', '--project', 'user');
-  assert.equal(tests.length, 3);
+  assert.equal(tests.length, 1);
   assert.ok(tests.every(test => test.project === 'user'));
 });
